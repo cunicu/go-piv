@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package piv
+package pcsc
 
 import (
 	"fmt"
@@ -53,11 +53,11 @@ func isRCNoReaders(rc uintptr) bool {
 	return rc == 0x8010002E
 }
 
-type scContext struct {
+type Context struct {
 	ctx syscall.Handle
 }
 
-func newSCContext() (*scContext, error) {
+func NewContext() (*Context, error) {
 	var ctx syscall.Handle
 
 	r0, _, _ := procSCardEstablishContext.Call(
@@ -69,15 +69,15 @@ func newSCContext() (*scContext, error) {
 	if err := scCheck(r0); err != nil {
 		return nil, err
 	}
-	return &scContext{ctx: ctx}, nil
+	return &Context{ctx: ctx}, nil
 }
 
-func (c *scContext) Close() error {
+func (c *Context) Release() error {
 	r0, _, _ := procSCardReleaseContext.Call(uintptr(c.ctx))
 	return scCheck(r0)
 }
 
-func (c *scContext) ListReaders() ([]string, error) {
+func (c *Context) ListReaders() ([]string, error) {
 	var n uint32
 	r0, _, _ := procSCardListReadersW.Call(
 		uintptr(c.ctx),
@@ -122,7 +122,7 @@ func (c *scContext) ListReaders() ([]string, error) {
 	return readers, nil
 }
 
-func (c *scContext) Connect(reader string) (*scHandle, error) {
+func (c *Context) Connect(reader string) (*Card, error) {
 	var (
 		handle         syscall.Handle
 		activeProtocol uint16
@@ -142,36 +142,29 @@ func (c *scContext) Connect(reader string) (*scHandle, error) {
 	if err := scCheck(r0); err != nil {
 		return nil, err
 	}
-	return &scHandle{handle}, nil
+	return &Card{handle}, nil
 }
 
-type scHandle struct {
-	handle syscall.Handle
+type Card struct {
+	h syscall.Handle
 }
 
-func (h *scHandle) Close() error {
-	r0, _, _ := procSCardDisconnect.Call(uintptr(h.handle), scardLeaveCard)
+func (h *Card) Close() error {
+	r0, _, _ := procSCardDisconnect.Call(uintptr(h.h), scardLeaveCard)
 	return scCheck(r0)
 }
 
-func (h *scHandle) Begin() (*scTx, error) {
-	r0, _, _ := procSCardBeginTransaction.Call(uintptr(h.handle))
-	if err := scCheck(r0); err != nil {
-		return nil, err
-	}
-	return &scTx{h.handle}, nil
-}
-
-func (t *scTx) Close() error {
-	r0, _, _ := procSCardEndTransaction.Call(uintptr(t.handle), scardLeaveCard)
+func (h *Card) BeginTransaction() error {
+	r0, _, _ := procSCardBeginTransaction.Call(uintptr(h.h))
 	return scCheck(r0)
 }
 
-type scTx struct {
-	handle syscall.Handle
+func (h *Card) EndTransaction() error {
+	r0, _, _ := procSCardEndTransaction.Call(uintptr(h.h), scardLeaveCard)
+	return scCheck(r0)
 }
 
-func (t *scTx) transmit(req []byte) (more bool, b []byte, err error) {
+func (h *Card) Transmit(req []byte) ([]byte, error) {
 	var resp [maxBufferSizeExtended]byte
 	reqN := len(req)
 	respN := len(resp)
@@ -184,20 +177,8 @@ func (t *scTx) transmit(req []byte) (more bool, b []byte, err error) {
 		uintptr(unsafe.Pointer(&resp[0])),
 		uintptr(unsafe.Pointer(&respN)),
 	)
-
 	if err := scCheck(r0); err != nil {
 		return false, nil, fmt.Errorf("transmitting request: %w", err)
 	}
-	if respN < 2 {
-		return false, nil, fmt.Errorf("scard response too short: %d", respN)
-	}
-	sw1 := resp[respN-2]
-	sw2 := resp[respN-1]
-	if sw1 == 0x90 && sw2 == 0x00 {
-		return false, resp[:respN-2], nil
-	}
-	if sw1 == 0x61 {
-		return true, resp[:respN-2], nil
-	}
-	return false, nil, &apduErr{sw1, sw2}
+	return resp[:respN-2], nil
 }

@@ -36,7 +36,7 @@ with open("pcsc_errors.go", 'w+') as f:
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package piv
+package pcsc
 
 // https://golang.org/s/generatedcode
 

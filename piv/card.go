@@ -19,16 +19,17 @@ import (
 	"fmt"
 )
 
-type scErr struct {
-	// rc holds the return code for a given call.
-	rc int64
+type Context interface {
+	Connect(reader string) (Card, error)
+	Release() error
+	ListReaders() ([]string, error)
 }
 
-func (e *scErr) Error() string {
-	if msg, ok := pcscErrMsgs[e.rc]; ok {
-		return msg
-	}
-	return fmt.Sprintf("unknown pcsc return code 0x%08x", e.rc)
+type Card interface {
+	BeginTransaction() error
+	EndTransaction() error
+	Transmit([]byte) ([]byte, error)
+	Disconnect() error
 }
 
 // AuthErr is an error indicating an authentication error occurred (wrong PIN or blocked).
@@ -134,7 +135,43 @@ type apdu struct {
 	data        []byte
 }
 
-func (t *scTx) Transmit(d apdu) ([]byte, error) {
+type transaction struct {
+	card Card
+}
+
+func newTransaction(h Card) (*transaction, error) {
+	if err := h.BeginTransaction(); err != nil {
+		return nil, err
+	}
+
+	return &transaction{
+		card: h,
+	}, nil
+}
+
+func (t *transaction) Close() error {
+	return t.card.EndTransaction()
+}
+
+func (t *transaction) transmit(req []byte) (more bool, b []byte, err error) {
+	resp, err := t.card.Transmit(req)
+	if err != nil {
+		return false, nil, fmt.Errorf("transmitting request: %w", err)
+	} else if len(resp) < 2 {
+		return false, nil, fmt.Errorf("scard response too short: %d", len(resp))
+	}
+	sw1 := resp[len(resp)-2]
+	sw2 := resp[len(resp)-1]
+	if sw1 == 0x90 && sw2 == 0x00 {
+		return false, resp[:len(resp)-2], nil
+	}
+	if sw1 == 0x61 {
+		return true, resp[:len(resp)-2], nil
+	}
+	return false, nil, &apduErr{sw1, sw2}
+}
+
+func (t *transaction) Transmit(d apdu) ([]byte, error) {
 	data := d.data
 	var resp []byte
 	const maxAPDUDataSize = 0xff

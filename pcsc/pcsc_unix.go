@@ -15,7 +15,7 @@
 //go:build darwin || linux || freebsd || openbsd
 // +build darwin linux freebsd openbsd
 
-package piv
+package pcsc
 
 // https://ludovicrousseau.blogspot.com/2010/04/pcsc-sample-in-c.html
 
@@ -41,24 +41,24 @@ import (
 
 const rcSuccess = C.SCARD_S_SUCCESS
 
-type scContext struct {
+type Context struct {
 	ctx C.SCARDCONTEXT
 }
 
-func newSCContext() (*scContext, error) {
+func NewContext() (*Context, error) {
 	var ctx C.SCARDCONTEXT
 	rc := C.SCardEstablishContext(C.SCARD_SCOPE_SYSTEM, nil, nil, &ctx)
 	if err := scCheck(rc); err != nil {
 		return nil, err
 	}
-	return &scContext{ctx: ctx}, nil
+	return &Context{ctx: ctx}, nil
 }
 
-func (c *scContext) Close() error {
+func (c *Context) Release() error {
 	return scCheck(C.SCardReleaseContext(c.ctx))
 }
 
-func (c *scContext) ListReaders() ([]string, error) {
+func (c *Context) ListReaders() ([]string, error) {
 	var n C.DWORD
 	rc := C.SCardListReaders(c.ctx, nil, nil, &n)
 	// On Linux, the PC/SC daemon will return an error when no smart cards are
@@ -88,11 +88,11 @@ func (c *scContext) ListReaders() ([]string, error) {
 	return readers, nil
 }
 
-type scHandle struct {
+type Card struct {
 	h C.SCARDHANDLE
 }
 
-func (c *scContext) Connect(reader string) (*scHandle, error) {
+func (c *Context) Connect(reader string) (*Card, error) {
 	var (
 		handle         C.SCARDHANDLE
 		activeProtocol C.DWORD
@@ -103,50 +103,32 @@ func (c *scContext) Connect(reader string) (*scHandle, error) {
 	if err := scCheck(rc); err != nil {
 		return nil, err
 	}
-	return &scHandle{handle}, nil
+	return &Card{handle}, nil
 }
 
-func (h *scHandle) Close() error {
+func (h *Card) Close() error {
 	return scCheck(C.SCardDisconnect(h.h, C.SCARD_LEAVE_CARD))
 }
 
-type scTx struct {
-	h C.SCARDHANDLE
+func (h *Card) BeginTransaction() error {
+	return scCheck(C.SCardBeginTransaction(h.h))
 }
 
-func (h *scHandle) Begin() (*scTx, error) {
-	if err := scCheck(C.SCardBeginTransaction(h.h)); err != nil {
-		return nil, err
-	}
-	return &scTx{h.h}, nil
+func (h *Card) EndTransaction() error {
+	return scCheck(C.SCardEndTransaction(h.h, C.SCARD_LEAVE_CARD))
 }
 
-func (t *scTx) Close() error {
-	return scCheck(C.SCardEndTransaction(t.h, C.SCARD_LEAVE_CARD))
-}
-
-func (t *scTx) transmit(req []byte) (more bool, b []byte, err error) {
+func (h *Card) Transmit(req []byte) ([]byte, error) {
 	var resp [C.MAX_BUFFER_SIZE_EXTENDED]byte
 	reqN := C.DWORD(len(req))
 	respN := C.DWORD(len(resp))
 	rc := C.SCardTransmit(
-		t.h,
+		h.h,
 		C.SCARD_PCI_T1,
 		(*C.BYTE)(&req[0]), reqN, nil,
 		(*C.BYTE)(&resp[0]), &respN)
 	if err := scCheck(rc); err != nil {
-		return false, nil, fmt.Errorf("transmitting request: %w", err)
+		return nil, fmt.Errorf("transmitting request: %w", err)
 	}
-	if respN < 2 {
-		return false, nil, fmt.Errorf("scard response too short: %d", respN)
-	}
-	sw1 := resp[respN-2]
-	sw2 := resp[respN-1]
-	if sw1 == 0x90 && sw2 == 0x00 {
-		return false, resp[:respN-2], nil
-	}
-	if sw1 == 0x61 {
-		return true, resp[:respN-2], nil
-	}
-	return false, nil, &apduErr{sw1, sw2}
+	return resp[:respN], nil
 }

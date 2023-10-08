@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package piv
+package pcsc
 
-import "C"
+import "fmt"
 
-// Return codes for PCSC are different on different platforms (int vs. long).
-
-func scCheck(rc C.long) error {
-	if rc == rcSuccess {
-		return nil
-	}
-	return &scErr{int64(rc)}
+type scErr struct {
+	// rc holds the return code for a given call.
+	rc int64
 }
 
-func isRCNoReaders(rc C.long) bool {
-	return uint32(rc) == 0x8010002E
+func (e *scErr) Error() string {
+	if msg, ok := pcscErrMsgs[e.rc]; ok {
+		return msg
+	}
+	return fmt.Sprintf("unknown pcsc return code 0x%08x", e.rc)
 }
