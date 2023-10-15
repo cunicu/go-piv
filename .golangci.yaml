@@ -56,7 +56,7 @@ linters:
   - gocognit # Computes and checks the cognitive complexity of functions
   - goconst # Finds repeated strings that could be replaced by a constant
   - gocritic # The most opinionated Go source code linter
-  - goerr113 # Golang linter to check the errors handling expressions
+  # - goerr113 # Golang linter to check the errors handling expressions
   - gofmt # Gofmt checks whether code was gofmt-ed. By default this tool runs with -s option to check for code simplification
   - gofumpt # Gofumpt checks whether code was gofumpt-ed.
   - goheader # Checks is file header matches to pattern

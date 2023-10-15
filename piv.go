@@ -6,7 +6,7 @@ package piv
 
 import (
 	"bytes"
-	"crypto/des"
+	"crypto/des" //nolint:gosec
 	"crypto/rand"
 	"encoding/asn1"
 	"encoding/binary"
@@ -18,22 +18,26 @@ import (
 	"github.com/ebfe/scard"
 )
 
-var (
+const (
 	// DefaultPIN for the PIV applet. The PIN is used to change the Management Key,
 	// and slots can optionally require it to perform signing operations.
 	DefaultPIN = "123456"
+
 	// DefaultPUK for the PIV applet. The PUK is only used to reset the PIN when
 	// the card's PIN retries have been exhausted.
 	DefaultPUK = "12345678"
-	// DefaultManagementKey for the PIV applet. The Management Key is a Triple-DES
-	// key required for slot actions such as generating keys, setting certificates,
-	// and signing.
-	DefaultManagementKey = [24]byte{
-		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-	}
 )
+
+// DefaultManagementKey for the PIV applet. The Management Key is a Triple-DES
+// key required for slot actions such as generating keys, setting certificates,
+// and signing.
+//
+//nolint:gochecknoglobals
+var DefaultManagementKey = [24]byte{
+	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+}
 
 // Cards lists all smart cards available via PC/SC interface. Card names are
 // strings describing the key, such as "Yubico Yubikey NEO OTP+U2F+CCID 00 00".
@@ -137,9 +141,13 @@ func (c *client) Cards() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connecting to pcsc: %w", err)
 	}
-	defer ctx.Release()
 
 	readers, err := ctx.ListReaders()
+
+	if err := ctx.Release(); err != nil {
+		return nil, fmt.Errorf("failed to release context")
+	}
+
 	if errors.Is(err, scard.ErrNoReadersAvailable) {
 		return nil, nil
 	}
@@ -155,7 +163,10 @@ func (c *client) Open(card string) (*YubiKey, error) {
 
 	h, err := ctx.Connect(card, scard.ShareExclusive, scard.ProtocolT1)
 	if err != nil {
-		ctx.Release()
+		if err := ctx.Release(); err != nil {
+			return nil, fmt.Errorf("failed to release context: %w", err)
+		}
+
 		return nil, fmt.Errorf("connecting to smart card: %w", err)
 	}
 	tx, err := newTx(h)
@@ -260,7 +271,7 @@ func ykPINRetries(tx *scTx) (int, error) {
 	if err == nil {
 		return 0, fmt.Errorf("expected error code from empty pin")
 	}
-	var e AuthErr
+	var e AuthError
 	if errors.As(err, &e) {
 		return e.Retries, nil
 	}
@@ -281,11 +292,11 @@ func ykReset(tx *scTx, r io.Reader) error {
 	maxPIN := big.NewInt(100_000_000)
 	pinInt, err := rand.Int(r, maxPIN)
 	if err != nil {
-		return fmt.Errorf("generating random pin: %v", err)
+		return fmt.Errorf("generating random pin: %w", err)
 	}
 	pukInt, err := rand.Int(r, maxPIN)
 	if err != nil {
-		return fmt.Errorf("generating random puk: %v", err)
+		return fmt.Errorf("generating random puk: %w", err)
 	}
 
 	pin := pinInt.String()
@@ -297,7 +308,7 @@ func ykReset(tx *scTx, r io.Reader) error {
 			// TODO: do we care about a 1/100million chance?
 			return fmt.Errorf("expected error with random pin")
 		}
-		var e AuthErr
+		var e AuthError
 		if !errors.As(err, &e) {
 			return fmt.Errorf("blocking pin: %w", err)
 		}
@@ -312,7 +323,7 @@ func ykReset(tx *scTx, r io.Reader) error {
 			// TODO: do we care about a 1/100million chance?
 			return fmt.Errorf("expected error with random puk")
 		}
-		var e AuthErr
+		var e AuthError
 		if !errors.As(err, &e) {
 			return fmt.Errorf("blocking puk: %w", err)
 		}
@@ -343,14 +354,15 @@ func (yk *YubiKey) authManagementKey(key [24]byte) error {
 	return ykAuthenticate(yk.tx, key, yk.rand)
 }
 
+// Smartcard Application IDs for YubiKeys.
+//
+// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.c#L1877
+// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.c#L108-L110
+// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.c#L1117
+//
+//nolint:gochecknoglobals
 var (
-	// Smartcard Application IDs for YubiKeys.
-	//
-	// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.c#L1877
-	// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.c#L108-L110
-	// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.c#L1117
-
-	aidManagement = [...]byte{0xa0, 0x00, 0x00, 0x05, 0x27, 0x47, 0x11, 0x17}
+	aidManagement = [...]byte{0xa0, 0x00, 0x00, 0x05, 0x27, 0x47, 0x11, 0x17} //nolint:unused
 	aidPIV        = [...]byte{0xa0, 0x00, 0x00, 0x03, 0x08}
 	aidYubiKey    = [...]byte{0xa0, 0x00, 0x00, 0x05, 0x27, 0x20, 0x01, 0x01}
 )
@@ -390,15 +402,15 @@ func ykAuthenticate(tx *scTx, key [24]byte, rand io.Reader) error {
 	cardChallenge := resp[4 : 4+8]
 	cardResponse := make([]byte, 8)
 
-	block, err := des.NewTripleDESCipher(key[:])
+	block, err := des.NewTripleDESCipher(key[:]) //nolint:gosec
 	if err != nil {
-		return fmt.Errorf("creating triple des block cipher: %v", err)
+		return fmt.Errorf("creating triple des block cipher: %w", err)
 	}
 	block.Decrypt(cardResponse, cardChallenge)
 
 	challenge := make([]byte, 8)
 	if _, err := io.ReadFull(rand, challenge); err != nil {
-		return fmt.Errorf("reading rand data: %v", err)
+		return fmt.Errorf("reading rand data: %w", err)
 	}
 	response := make([]byte, 8)
 	block.Encrypt(response, challenge)
@@ -459,10 +471,8 @@ func (yk *YubiKey) SetManagementKey(oldKey, newKey [24]byte) error {
 	if err := ykAuthenticate(yk.tx, oldKey, yk.rand); err != nil {
 		return fmt.Errorf("authenticating with old key: %w", err)
 	}
-	if err := ykSetManagementKey(yk.tx, newKey, false); err != nil {
-		return err
-	}
-	return nil
+
+	return ykSetManagementKey(yk.tx, newKey, false)
 }
 
 // ykSetManagementKey updates the management key to a new key. This requires
@@ -507,11 +517,11 @@ func (yk *YubiKey) SetPIN(oldPIN, newPIN string) error {
 func ykChangePIN(tx *scTx, oldPIN, newPIN string) error {
 	oldPINData, err := encodePIN(oldPIN)
 	if err != nil {
-		return fmt.Errorf("encoding old pin: %v", err)
+		return fmt.Errorf("encoding old pin: %w", err)
 	}
 	newPINData, err := encodePIN(newPIN)
 	if err != nil {
-		return fmt.Errorf("encoding new pin: %v", err)
+		return fmt.Errorf("encoding new pin: %w", err)
 	}
 	cmd := apdu{
 		instruction: insChangeReference,
@@ -530,11 +540,11 @@ func (yk *YubiKey) Unblock(puk, newPIN string) error {
 func ykUnblockPIN(tx *scTx, puk, newPIN string) error {
 	pukData, err := encodePIN(puk)
 	if err != nil {
-		return fmt.Errorf("encoding puk: %v", err)
+		return fmt.Errorf("encoding puk: %w", err)
 	}
 	newPINData, err := encodePIN(newPIN)
 	if err != nil {
-		return fmt.Errorf("encoding new pin: %v", err)
+		return fmt.Errorf("encoding new pin: %w", err)
 	}
 	cmd := apdu{
 		instruction: insResetRetry,
@@ -567,11 +577,11 @@ func (yk *YubiKey) SetPUK(oldPUK, newPUK string) error {
 func ykChangePUK(tx *scTx, oldPUK, newPUK string) error {
 	oldPUKData, err := encodePIN(oldPUK)
 	if err != nil {
-		return fmt.Errorf("encoding old puk: %v", err)
+		return fmt.Errorf("encoding old puk: %w", err)
 	}
 	newPUKData, err := encodePIN(newPUK)
 	if err != nil {
-		return fmt.Errorf("encoding new puk: %v", err)
+		return fmt.Errorf("encoding new puk: %w", err)
 	}
 	cmd := apdu{
 		instruction: insChangeReference,
@@ -586,7 +596,7 @@ func ykSelectApplication(tx *scTx, id []byte) error {
 	cmd := apdu{
 		instruction: insSelectApplication,
 		param1:      0x04,
-		data:        id[:],
+		data:        id,
 	}
 	if _, err := tx.Transmit(cmd); err != nil {
 		return fmt.Errorf("command failed: %w", err)
@@ -616,7 +626,7 @@ func ykSerial(tx *scTx, v *version) (uint32, error) {
 		if err := ykSelectApplication(tx, aidYubiKey[:]); err != nil {
 			return 0, fmt.Errorf("selecting YubiKey applet: %w", err)
 		}
-		defer ykSelectApplication(tx, aidPIV[:])
+		defer ykSelectApplication(tx, aidPIV[:]) //nolint:errcheck
 		cmd = apdu{instruction: 0x01, param1: 0x10}
 	}
 	resp, err := tx.Transmit(cmd)
@@ -679,7 +689,7 @@ func (m *Metadata) marshal() ([]byte, error) {
 
 	var metadata asn1.RawValue
 	if _, err := asn1.Unmarshal(m.raw, &metadata); err != nil {
-		return nil, fmt.Errorf("updating metadata: %v", err)
+		return nil, fmt.Errorf("updating metadata: %w", err)
 	}
 	if !bytes.HasPrefix(metadata.FullBytes, []byte{0x88}) {
 		return nil, fmt.Errorf("expected tag: 0x88")
@@ -696,7 +706,7 @@ func (m *Metadata) marshal() ([]byte, error) {
 		)
 		raw, err = asn1.Unmarshal(raw, &v)
 		if err != nil {
-			return nil, fmt.Errorf("unmarshal metadata field: %v", err)
+			return nil, fmt.Errorf("unmarshal metadata field: %w", err)
 		}
 
 		if bytes.HasPrefix(v.FullBytes, []byte{0x89}) {
@@ -726,7 +736,7 @@ func (m *Metadata) unmarshal(b []byte) error {
 		)
 		d, err = asn1.Unmarshal(d, &v)
 		if err != nil {
-			return fmt.Errorf("unmarshal metadata field: %v", err)
+			return fmt.Errorf("unmarshal metadata field: %w", err)
 		}
 		if !bytes.HasPrefix(v.FullBytes, []byte{0x89}) {
 			continue
@@ -766,11 +776,11 @@ func ykGetProtectedMetadata(tx *scTx, pin string) (*Metadata, error) {
 	}
 	obj, _, err := unmarshalASN1(resp, 1, 0x13) // tag 0x53
 	if err != nil {
-		return nil, fmt.Errorf("unmarshaling response: %v", err)
+		return nil, fmt.Errorf("unmarshaling response: %w", err)
 	}
 	var m Metadata
 	if err := m.unmarshal(obj); err != nil {
-		return nil, fmt.Errorf("unmarshal protected metadata: %v", err)
+		return nil, fmt.Errorf("unmarshal protected metadata: %w", err)
 	}
 	return &m, nil
 }
@@ -778,7 +788,7 @@ func ykGetProtectedMetadata(tx *scTx, pin string) (*Metadata, error) {
 func ykSetProtectedMetadata(tx *scTx, key [24]byte, m *Metadata) error {
 	data, err := m.marshal()
 	if err != nil {
-		return fmt.Errorf("encoding metadata: %v", err)
+		return fmt.Errorf("encoding metadata: %w", err)
 	}
 	data = append([]byte{
 		0x5c, // Tag list

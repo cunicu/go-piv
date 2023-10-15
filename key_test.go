@@ -27,8 +27,8 @@ import (
 )
 
 func TestYubiKeySignECDSA(t *testing.T) {
-	yk, close := newTestYubiKey(t)
-	defer close()
+	yk, closeCard := newTestYubiKey(t)
+	defer closeCard()
 
 	if err := yk.Reset(); err != nil {
 		t.Fatalf("reset yubikey: %v", err)
@@ -74,8 +74,8 @@ func TestYubiKeySignECDSA(t *testing.T) {
 }
 
 func TestYubiKeyECDSASharedKey(t *testing.T) {
-	yk, close := newTestYubiKey(t)
-	defer close()
+	yk, closeCard := newTestYubiKey(t)
+	defer closeCard()
 
 	slot := SlotAuthentication
 
@@ -144,8 +144,8 @@ func TestPINPrompt(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 
 			k := Key{
 				Algorithm:   AlgorithmEC256,
@@ -194,12 +194,13 @@ func supportsAttestation(yk *YubiKey) bool {
 	return supportsVersion(yk.Version(), 4, 3, 0)
 }
 
+//nolint:gocognit
 func TestSlots(t *testing.T) {
-	yk, close := newTestYubiKey(t)
+	yk, closeCard := newTestYubiKey(t)
 	if err := yk.Reset(); err != nil {
 		t.Fatalf("resetting yubikey: %v", err)
 	}
-	close()
+	closeCard()
 
 	tests := []struct {
 		name string
@@ -213,8 +214,8 @@ func TestSlots(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 
 			if supportsAttestation(yk) {
 				if _, err := yk.Attest(test.slot); err == nil || !errors.Is(err, ErrNotFound) {
@@ -291,8 +292,8 @@ func TestYubiKeySignRSA(t *testing.T) {
 			if test.long && testing.Short() {
 				t.Skip("skipping test in short mode")
 			}
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 			slot := SlotAuthentication
 			key := Key{
 				Algorithm:   test.alg,
@@ -341,8 +342,8 @@ func TestYubiKeySignRSAPSS(t *testing.T) {
 			if test.long && testing.Short() {
 				t.Skip("skipping test in short mode")
 			}
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 			slot := SlotAuthentication
 			key := Key{
 				Algorithm:   test.alg,
@@ -380,8 +381,8 @@ func TestYubiKeySignRSAPSS(t *testing.T) {
 }
 
 func TestTLS13(t *testing.T) {
-	yk, close := newTestYubiKey(t)
-	defer close()
+	yk, closeCard := newTestYubiKey(t)
+	defer closeCard()
 	slot := SlotAuthentication
 	key := Key{
 		Algorithm:   AlgorithmRSA1024,
@@ -443,7 +444,7 @@ func TestTLS13(t *testing.T) {
 		MaxVersion:   tls.VersionTLS13,
 	}
 
-	srv, err := tls.Listen("tcp", "0.0.0.0:0", srvConf)
+	srv, err := tls.Listen("tcp", "127.0.0.1:0", srvConf)
 	if err != nil {
 		t.Fatalf("creating tls listener: %v", err)
 	}
@@ -456,14 +457,14 @@ func TestTLS13(t *testing.T) {
 	go func() {
 		conn, err := srv.Accept()
 		if err != nil {
-			errCh <- fmt.Errorf("accepting conn: %v", err)
+			errCh <- fmt.Errorf("accepting conn: %w", err)
 			return
 		}
 		defer conn.Close()
 
 		got := make([]byte, len(want))
 		if _, err := io.ReadFull(conn, got); err != nil {
-			errCh <- fmt.Errorf("read data: %v", err)
+			errCh <- fmt.Errorf("read data: %w", err)
 			return
 		}
 		if !bytes.Equal(want, got) {
@@ -476,18 +477,18 @@ func TestTLS13(t *testing.T) {
 	go func() {
 		conn, err := tls.Dial("tcp", srv.Addr().String(), cliConf)
 		if err != nil {
-			errCh <- fmt.Errorf("dial: %v", err)
+			errCh <- fmt.Errorf("dial: %w", err)
 			return
 		}
 		defer conn.Close()
 
 		if v := conn.ConnectionState().Version; v != tls.VersionTLS13 {
-			errCh <- fmt.Errorf("client got verison 0x%x, want=0x%x", v, tls.VersionTLS13)
+			errCh <- fmt.Errorf("client got version 0x%x, want=0x%x", v, tls.VersionTLS13)
 			return
 		}
 
 		if _, err := conn.Write(want); err != nil {
-			errCh <- fmt.Errorf("write: %v", err)
+			errCh <- fmt.Errorf("write: %w", err)
 			return
 		}
 		errCh <- nil
@@ -514,8 +515,8 @@ func TestYubiKeyDecryptRSA(t *testing.T) {
 			if test.long && testing.Short() {
 				t.Skip("skipping test in short mode")
 			}
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 			slot := SlotAuthentication
 			key := Key{
 				Algorithm:   test.alg,
@@ -557,8 +558,8 @@ func TestYubiKeyDecryptRSA(t *testing.T) {
 }
 
 func TestYubiKeyAttestation(t *testing.T) {
-	yk, close := newTestYubiKey(t)
-	defer close()
+	yk, closeCard := newTestYubiKey(t)
+	defer closeCard()
 	key := Key{
 		Algorithm:   AlgorithmEC256,
 		PINPolicy:   PINPolicyNever,
@@ -610,8 +611,8 @@ func TestYubiKeyAttestation(t *testing.T) {
 }
 
 func TestYubiKeyStoreCertificate(t *testing.T) {
-	yk, close := newTestYubiKey(t)
-	defer close()
+	yk, closeCard := newTestYubiKey(t)
+	defer closeCard()
 	slot := SlotAuthentication
 
 	caPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -707,8 +708,8 @@ func TestYubiKeyGenerateKey(t *testing.T) {
 			if test.long && testing.Short() {
 				t.Skip("skipping test in short mode")
 			}
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 			if test.alg == AlgorithmEC384 {
 				testRequiresVersion(t, yk, 4, 3, 0)
 			}
@@ -729,8 +730,8 @@ func TestYubiKeyPrivateKey(t *testing.T) {
 	alg := AlgorithmEC256
 	slot := SlotAuthentication
 
-	yk, close := newTestYubiKey(t)
-	defer close()
+	yk, closeCard := newTestYubiKey(t)
+	defer closeCard()
 
 	key := Key{
 		Algorithm:   alg,
@@ -778,8 +779,8 @@ func TestYubiKeyPrivateKeyPINError(t *testing.T) {
 	alg := AlgorithmEC256
 	slot := SlotAuthentication
 
-	yk, close := newTestYubiKey(t)
-	defer close()
+	yk, closeCard := newTestYubiKey(t)
+	defer closeCard()
 
 	key := Key{
 		Algorithm:   alg,
@@ -893,8 +894,8 @@ func TestSetRSAPrivateKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 
 			generated, err := rsa.GenerateKey(rand.Reader, tt.bits)
 			if err != nil {
@@ -905,7 +906,7 @@ func TestSetRSAPrivateKey(t *testing.T) {
 				PINPolicy:   PINPolicyNever,
 				TouchPolicy: TouchPolicyNever,
 			})
-			if err != tt.wantErr {
+			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("SetPrivateKeyInsecure(): wantErr=%v, got err=%v", tt.wantErr, err)
 			}
 			if err != nil {
@@ -925,7 +926,10 @@ func TestSetRSAPrivateKey(t *testing.T) {
 				t.Fatalf("encrypting data: %v", err)
 			}
 
-			deviceDecrypter := priv.(crypto.Decrypter)
+			deviceDecrypter, ok := priv.(crypto.Decrypter)
+			if !ok {
+				t.Fatalf("Pivate key is not a crypto.Decrypter")
+			}
 
 			// Decrypt the data on the device
 			decrypted, err := deviceDecrypter.Decrypt(rand.Reader, encrypted, nil)
@@ -975,8 +979,8 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 
 			generated, err := ecdsa.GenerateKey(tt.curve, rand.Reader)
 			if err != nil {
@@ -987,7 +991,7 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 				PINPolicy:   PINPolicyNever,
 				TouchPolicy: TouchPolicyNever,
 			})
-			if err != tt.wantErr {
+			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("SetPrivateKeyInsecure(): wantErr=%v, got err=%v", tt.wantErr, err)
 			}
 			if err != nil {
@@ -999,7 +1003,10 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 				t.Fatalf("getting private key: %v", err)
 			}
 
-			deviceSigner := priv.(crypto.Signer)
+			deviceSigner, ok := priv.(crypto.Signer)
+			if !ok {
+				t.Fatal("Private key is not a crypto.Signer")
+			}
 
 			hash := []byte("Test data to sign")
 			// Sign the data on the device
@@ -1131,8 +1138,8 @@ func TestVerify(t *testing.T) {
 
 func TestKeyInfo(t *testing.T) {
 	func() {
-		yk, close := newTestYubiKey(t)
-		defer close()
+		yk, closeCard := newTestYubiKey(t)
+		defer closeCard()
 
 		testRequiresVersion(t, yk, 5, 3, 0)
 
@@ -1240,8 +1247,8 @@ func TestKeyInfo(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			yk, close := newTestYubiKey(t)
-			defer close()
+			yk, closeCard := newTestYubiKey(t)
+			defer closeCard()
 
 			want := KeyInfo{
 				Algorithm:   test.policy.Algorithm,
@@ -1281,8 +1288,8 @@ func TestKeyInfo(t *testing.T) {
 // certificate.
 func TestPINPolicy(t *testing.T) {
 	func() {
-		yk, close := newTestYubiKey(t)
-		defer close()
+		yk, closeCard := newTestYubiKey(t)
+		defer closeCard()
 
 		testRequiresVersion(t, yk, 5, 3, 0)
 
@@ -1291,8 +1298,8 @@ func TestPINPolicy(t *testing.T) {
 		}
 	}()
 
-	yk, close := newTestYubiKey(t)
-	defer close()
+	yk, closeCard := newTestYubiKey(t)
+	defer closeCard()
 
 	// for imported keys, using the attestation certificate to derive the PIN
 	// policy fails. So we check that pinPolicy succeeds with imported keys.
@@ -1332,7 +1339,7 @@ func ephemeralKey(t *testing.T, alg Algorithm) privateKey {
 	case AlgorithmEd25519:
 		_, key, err = ed25519.GenerateKey(rand.Reader)
 	case AlgorithmRSA1024:
-		key, err = rsa.GenerateKey(rand.Reader, 1024)
+		key, err = rsa.GenerateKey(rand.Reader, 1024) //nolint:gosec
 	case AlgorithmRSA2048:
 		key, err = rsa.GenerateKey(rand.Reader, 2048)
 	default:

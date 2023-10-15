@@ -11,7 +11,7 @@ import (
 	"io"
 )
 
-var invalidSaltLenErr = errors.New("crypto/rsa: PSSOptions.SaltLength cannot be negative")
+var errInvalidSaltLen = errors.New("crypto/rsa: PSSOptions.SaltLength cannot be negative")
 
 // Per RFC 8017, Section 9.1
 //
@@ -156,7 +156,7 @@ func NewSalt(rand io.Reader, pub *rsa.PublicKey, hash crypto.Hash, opts *rsa.PSS
 		// If we get here saltLength is either > 0 or < -1, in the
 		// latter case we fail out.
 		if saltLength <= 0 {
-			return nil, invalidSaltLenErr
+			return nil, errInvalidSaltLen
 		}
 	}
 	salt := make([]byte, saltLength)

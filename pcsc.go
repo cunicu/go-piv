@@ -10,15 +10,15 @@ import (
 	"github.com/ebfe/scard"
 )
 
-// AuthErr is an error indicating an authentication error occurred (wrong PIN or blocked).
-type AuthErr struct {
+// AuthError is an error indicating an authentication error occurred (wrong PIN or blocked).
+type AuthError struct {
 	// Retries is the number of retries remaining if this error resulted from a retry-able
 	// authentication attempt.  If the authentication method is blocked or does not support
 	// retries, this will be 0.
 	Retries int
 }
 
-func (v AuthErr) Error() string {
+func (v AuthError) Error() string {
 	r := "retries"
 	if v.Retries == 1 {
 		r = "retry"
@@ -29,21 +29,21 @@ func (v AuthErr) Error() string {
 // ErrNotFound is returned when the requested object on the smart card is not found.
 var ErrNotFound = errors.New("data object or application not found")
 
-// apduErr is an error interacting with the PIV application on the smart card.
+// apduError is an error interacting with the PIV application on the smart card.
 // This error may wrap more accessible errors, like ErrNotFound or an instance
 // of AuthErr, so callers are encouraged to use errors.Is and errors.As for
 // these common cases.
-type apduErr struct {
+type apduError struct {
 	sw1 byte
 	sw2 byte
 }
 
 // Status returns the Status Word returned by the card command.
-func (a *apduErr) Status() uint16 {
+func (a *apduError) Status() uint16 {
 	return uint16(a.sw1)<<8 | uint16(a.sw2)
 }
 
-func (a *apduErr) Error() string {
+func (a *apduError) Error() string {
 	var msg string
 	if u := a.Unwrap(); u != nil {
 		msg = u.Error()
@@ -85,23 +85,23 @@ func (a *apduErr) Error() string {
 }
 
 // Unwrap retrieves an accessible error type, if able.
-func (a *apduErr) Unwrap() error {
+func (a *apduError) Unwrap() error {
 	st := a.Status()
 	switch {
 	case st == 0x6a82:
 		return ErrNotFound
 	case st == 0x6300:
-		return AuthErr{0}
+		return AuthError{0}
 	case st == 0x6983:
-		return AuthErr{0}
+		return AuthError{0}
 	case st&0xfff0 == 0x63c0:
-		return AuthErr{int(st & 0xf)}
+		return AuthError{int(st & 0xf)}
 	case st&0xfff0 == 0x6300:
 		// Older YubiKeys sometimes return sw1=0x63 and sw2=0x0N to indicate the
 		// number of retries. This isn't spec compliant, but support it anyway.
 		//
 		// https://cunicu.li/go-piv/issues/60
-		return AuthErr{int(st & 0xf)}
+		return AuthError{int(st & 0xf)}
 	}
 	return nil
 }
@@ -146,7 +146,7 @@ func (t *scTx) transmit(req []byte) (more bool, b []byte, err error) {
 	if sw1 == 0x61 {
 		return true, resp[:len(resp)-2], nil
 	}
-	return false, nil, &apduErr{sw1, sw2}
+	return false, nil, &apduError{sw1, sw2}
 }
 
 func (t *scTx) Transmit(d apdu) ([]byte, error) {
