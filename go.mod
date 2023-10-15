@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2020 Google LLC
+// SPDX-License-Identifier: Apache-2.0
+
 module github.com/go-piv/piv-go
 
 go 1.16
