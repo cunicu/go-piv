@@ -1,3 +1,8 @@
+<!--
+  SPDX-FileCopyrightText: 2020 Google LLC
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 # A Go YubiKey PIV implementation
 
 **Note:** This is not an officially supported Google product
