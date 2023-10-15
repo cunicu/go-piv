@@ -28,7 +28,7 @@ func runHandleTest(t *testing.T, f func(t *testing.T, h *scard.Card)) {
 	runContextTest(t, func(t *testing.T, c *scard.Context) {
 		readers, err := c.ListReaders()
 		if err != nil && !errors.Is(err, scard.ErrNoReadersAvailable) {
-			t.Fatalf("listing smartcard readers: %v", err)
+			t.Fatalf("listing smart card readers: %v", err)
 		}
 		reader := ""
 		for _, r := range readers {

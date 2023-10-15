@@ -171,7 +171,7 @@ func (c *client) Open(card string) (*YubiKey, error) {
 	v, err := ykVersion(yk.tx)
 	if err != nil {
 		yk.Close()
-		return nil, fmt.Errorf("getting yubikey version: %w", err)
+		return nil, fmt.Errorf("getting YubiKey version: %w", err)
 	}
 	yk.version = v
 	if c.Rand != nil {
@@ -220,7 +220,7 @@ func encodePIN(pin string) ([]byte, error) {
 // PIN authentication for other operations are handled separately, and VerifyPIN
 // does not need to be called before those methods.
 //
-// After a specific number of authentication attemps with an invalid PIN,
+// After a specific number of authentication attempts with an invalid PIN,
 // usually 3, the PIN will become block and refuse further attempts. At that
 // point the PUK must be used to unblock the PIN.
 //
@@ -323,7 +323,7 @@ func ykReset(tx *scTx, r io.Reader) error {
 
 	cmd := apdu{instruction: insReset}
 	if _, err := tx.Transmit(cmd); err != nil {
-		return fmt.Errorf("reseting yubikey: %w", err)
+		return fmt.Errorf("resetting YubiKey: %w", err)
 	}
 	return nil
 }
@@ -611,10 +611,10 @@ func ykVersion(tx *scTx) (*version, error) {
 func ykSerial(tx *scTx, v *version) (uint32, error) {
 	cmd := apdu{instruction: insGetSerial}
 	if v.major < 5 {
-		// Earlier versions of YubiKeys required using the yubikey applet to get
+		// Earlier versions of YubiKeys required using the YubiKey applet to get
 		// the serial number. Newer ones have this built into the PIV applet.
 		if err := ykSelectApplication(tx, aidYubiKey[:]); err != nil {
-			return 0, fmt.Errorf("selecting yubikey applet: %w", err)
+			return 0, fmt.Errorf("selecting YubiKey applet: %w", err)
 		}
 		defer ykSelectApplication(tx, aidPIV[:])
 		cmd = apdu{instruction: 0x01, param1: 0x10}
@@ -644,7 +644,7 @@ func (yk *YubiKey) Metadata(pin string) (*Metadata, error) {
 
 // SetMetadata sets PIN protected metadata on the key. This is primarily to
 // store the management key on the smart card instead of managing the PIN and
-// management key seperately.
+// management key separately.
 func (yk *YubiKey) SetMetadata(key [24]byte, m *Metadata) error {
 	return ykSetProtectedMetadata(yk.tx, key, m)
 }
