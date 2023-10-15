@@ -24,12 +24,30 @@ import (
 	rsafork "cunicu.li/go-piv/internal/rsa"
 )
 
-// errMismatchingAlgorithms is returned when a cryptographic operation
-// is given keys using different algorithms.
-var errMismatchingAlgorithms = errors.New("mismatching key algorithms")
+var (
+	// errMismatchingAlgorithms is returned when a cryptographic operation
+	// is given keys using different algorithms.
+	errMismatchingAlgorithms = errors.New("mismatching key algorithms")
 
-// errUnsupportedKeySize is returned when a key has an unsupported size
-var errUnsupportedKeySize = errors.New("unsupported key size")
+	// errUnsupportedKeySize is returned when a key has an unsupported size
+	errUnsupportedKeySize = errors.New("unsupported key size")
+
+	errInvalidPKCS1Padding      = errors.New("invalid PKCS#1 v1.5 padding")
+	errInvalidSerialNumber      = errors.New("invalid serial number")
+	errMissingPIN               = errors.New("pin required but wasn't provided")
+	errParseCert                = errors.New("failed to parse certificate")
+	errUnexpectedLength         = errors.New("unexpected length")
+	errUnmarshal                = errors.New("failed to unmarshal")
+	errUnsupportedAlgorithm     = errors.New("unsupported algorithm")
+	errUnsupportedHashAlgorithm = errors.New("unsupported hash algorithm")
+	errUnsupportedPinPolicy     = errors.New("unsupported pin policy")
+	errUnsupportedTouchPolicy   = errors.New("unsupported touch policy")
+	errUnsupportedKeyType       = errors.New("unsupported key type")
+	errUnsupportedOrigin        = errors.New("unsupported origin")
+	errPointsNotOnCurve         = errors.New("resulting points are not on curve")
+	errPointsNotCompressed      = errors.New("points were not uncompressed")
+	errUnexpectedClassTag       = errors.New("unexpected class/tag")
+)
 
 // unsupportedCurveError is used when a key has an unsupported curve
 type unsupportedCurveError struct {
@@ -145,7 +163,7 @@ func (a *Attestation) addExt(e pkix.Extension) error {
 	switch {
 	case e.Id.Equal(extIDFirmwareVersion):
 		if len(e.Value) != 3 {
-			return fmt.Errorf("expected 3 bytes for firmware version, got: %d", len(e.Value))
+			return fmt.Errorf("%w for firmware version, got=%dB, want=3B", errUnexpectedLength, len(e.Value))
 		}
 		a.Version = Version{
 			Major: int(e.Value[0]),
@@ -155,15 +173,15 @@ func (a *Attestation) addExt(e pkix.Extension) error {
 	case e.Id.Equal(extIDSerialNumber):
 		var serial int64
 		if _, err := asn1.Unmarshal(e.Value, &serial); err != nil {
-			return fmt.Errorf("parsing serial number: %w", err)
+			return fmt.Errorf("failed to parse serial number: %w", err)
 		}
 		if serial < 0 {
-			return fmt.Errorf("serial number was negative: %d", serial)
+			return fmt.Errorf("%w: is negative %d", errInvalidSerialNumber, serial)
 		}
 		a.Serial = uint32(serial)
 	case e.Id.Equal(extIDKeyPolicy):
 		if len(e.Value) != 2 {
-			return fmt.Errorf("expected 2 bytes from key policy, got: %d", len(e.Value))
+			return fmt.Errorf("%w for key policy: got=%dB, want=2B", errUnexpectedLength, len(e.Value))
 		}
 		switch e.Value[0] {
 		case 0x01:
@@ -173,7 +191,7 @@ func (a *Attestation) addExt(e pkix.Extension) error {
 		case 0x03:
 			a.PINPolicy = PINPolicyAlways
 		default:
-			return fmt.Errorf("unrecognized pin policy: 0x%x", e.Value[0])
+			return fmt.Errorf("%w: 0x%x", errUnsupportedPinPolicy, e.Value[0])
 		}
 		switch e.Value[1] {
 		case 0x01:
@@ -183,11 +201,11 @@ func (a *Attestation) addExt(e pkix.Extension) error {
 		case 0x03:
 			a.TouchPolicy = TouchPolicyCached
 		default:
-			return fmt.Errorf("unrecognized touch policy: 0x%x", e.Value[1])
+			return fmt.Errorf("%w: 0x%x", errUnsupportedTouchPolicy, e.Value[1])
 		}
 	case e.Id.Equal(extIDFormFactor):
 		if len(e.Value) != 1 {
-			return fmt.Errorf("expected 1 byte from formfactor, got: %d", len(e.Value))
+			return fmt.Errorf("%w: expected 1 byte for form factor, got=%d", errUnexpectedLength, len(e.Value))
 		}
 		a.Formfactor = Formfactor(e.Value[0])
 	}
@@ -243,7 +261,7 @@ func (v *Verifier) Verify(attestationCert, slotCert *x509.Certificate) (*Attesta
 
 	_, err := slotCert.Verify(o)
 	if err != nil {
-		return nil, fmt.Errorf("error verifying attestation certificate: %w", err)
+		return nil, fmt.Errorf("failed to verify attestation certificate: %w", err)
 	}
 	return parseAttestation(slotCert)
 }
@@ -252,7 +270,7 @@ func parseAttestation(slotCert *x509.Certificate) (*Attestation, error) {
 	var a Attestation
 	for _, ext := range slotCert.Extensions {
 		if err := a.addExt(ext); err != nil {
-			return nil, fmt.Errorf("parsing extension: %w", err)
+			return nil, fmt.Errorf("failed to parse extension: %w", err)
 		}
 	}
 
@@ -340,17 +358,17 @@ func yubicoCAs() (*x509.CertPool, error) {
 	certPool := x509.NewCertPool()
 
 	if !certPool.AppendCertsFromPEM([]byte(yubicoPIVCAPEMAfter2018)) {
-		return nil, fmt.Errorf("failed to parse yubico cert")
+		return nil, errParseCert
 	}
 
 	bU2F, _ := pem.Decode([]byte(yubicoPIVCAPEMU2F))
 	if bU2F == nil {
-		return nil, fmt.Errorf("failed to decode yubico pem data")
+		return nil, errParseCert
 	}
 
 	certU2F, err := x509.ParseCertificate(bU2F.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse yubico cert: %w", err)
+		return nil, fmt.Errorf("%w: %w", errParseCert, err)
 	}
 
 	// The U2F root cert has pathlen x509 basic constraint set to 0.
@@ -578,18 +596,18 @@ func ykAttest(tx *scTx, slot Slot) (*x509.Certificate, error) {
 	}
 	resp, err := tx.Transmit(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %w", err)
+		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 	if bytes.HasPrefix(resp, []byte{0x70}) {
 		b, _, err := unmarshalASN1(resp, 0, 0x10) // tag 0x70
 		if err != nil {
-			return nil, fmt.Errorf("unmarshaling certificate: %w", err)
+			return nil, fmt.Errorf("failed to unmarshal certificate: %w", err)
 		}
 		resp = b
 	}
 	cert, err := x509.ParseCertificate(resp)
 	if err != nil {
-		return nil, fmt.Errorf("parsing certificate: %w", err)
+		return nil, fmt.Errorf("%w: %w", errParseCert, err)
 	}
 	return cert, nil
 }
@@ -619,32 +637,32 @@ func (ki *KeyInfo) unmarshal(b []byte) error {
 		switch v.Tag {
 		case 1:
 			if len(v.Bytes) != 1 {
-				return errors.New("invalid algorithm in response")
+				return fmt.Errorf("%w for algorithm", errUnexpectedLength)
 			}
 			if ki.Algorithm, ok = algorithmsMapInv[v.Bytes[0]]; !ok {
-				return errors.New("unknown algorithm in response")
+				return errUnsupportedAlgorithm
 			}
 		case 2:
 			if len(v.Bytes) != 2 {
-				return errors.New("invalid policy in response")
+				return fmt.Errorf("%w for pin and touch policy", errUnexpectedLength)
 			}
 			if ki.PINPolicy, ok = pinPolicyMapInv[v.Bytes[0]]; !ok {
-				return errors.New("unknown PIN policy in response")
+				return errUnsupportedPinPolicy
 			}
 			if ki.TouchPolicy, ok = touchPolicyMapInv[v.Bytes[1]]; !ok {
-				return errors.New("unknown touch policy in response")
+				return errUnsupportedTouchPolicy
 			}
 		case 3:
 			if len(v.Bytes) != 1 {
-				return errors.New("invalid origin in response")
+				return fmt.Errorf("%w for origin", errUnexpectedLength)
 			}
 			if ki.Origin, ok = originMapInv[v.Bytes[0]]; !ok {
-				return errors.New("unknown origin in response")
+				return errUnsupportedOrigin
 			}
 		case 4:
 			ki.PublicKey, err = decodePublic(v.Bytes, ki.Algorithm)
 			if err != nil {
-				return fmt.Errorf("parse public key: %w", err)
+				return fmt.Errorf("failed to parse public key: %w", err)
 			}
 		default:
 			// TODO: According to the Yubico website, we get two more fields,
@@ -672,7 +690,7 @@ func (yk *YubiKey) KeyInfo(slot Slot) (KeyInfo, error) {
 	}
 	resp, err := yk.tx.Transmit(cmd)
 	if err != nil {
-		return KeyInfo{}, fmt.Errorf("command failed: %w", err)
+		return KeyInfo{}, fmt.Errorf("failed to execute command: %w", err)
 	}
 	var ki KeyInfo
 	if err := ki.unmarshal(resp); err != nil {
@@ -700,20 +718,20 @@ func (yk *YubiKey) Certificate(slot Slot) (*x509.Certificate, error) {
 	}
 	resp, err := yk.tx.Transmit(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %w", err)
+		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=85
 	obj, _, err := unmarshalASN1(resp, 1, 0x13) // tag 0x53
 	if err != nil {
-		return nil, fmt.Errorf("unmarshaling response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	certDER, _, err := unmarshalASN1(obj, 1, 0x10) // tag 0x70
 	if err != nil {
-		return nil, fmt.Errorf("unmarshaling certificate: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal certificate: %w", err)
 	}
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return nil, fmt.Errorf("parsing certificate: %w", err)
+		return nil, fmt.Errorf("%w: %w", errParseCert, err)
 	}
 	return cert, nil
 }
@@ -747,7 +765,7 @@ func marshalASN1(tag byte, data []byte) []byte {
 // decryption.
 func (yk *YubiKey) SetCertificate(key [24]byte, slot Slot, cert *x509.Certificate) error {
 	if err := ykAuthenticate(yk.tx, key, yk.rand); err != nil {
-		return fmt.Errorf("authenticating with management key: %w", err)
+		return fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
 	return ykStoreCertificate(yk.tx, slot, cert)
 }
@@ -774,7 +792,7 @@ func ykStoreCertificate(tx *scTx, slot Slot, cert *x509.Certificate) error {
 		data:        data,
 	}
 	if _, err := tx.Transmit(cmd); err != nil {
-		return fmt.Errorf("command failed: %w", err)
+		return fmt.Errorf("failed to execute command: %w", err)
 	}
 	return nil
 }
@@ -801,7 +819,7 @@ type Key struct {
 // public key.
 func (yk *YubiKey) GenerateKey(key [24]byte, slot Slot, opts Key) (crypto.PublicKey, error) {
 	if err := ykAuthenticate(yk.tx, key, yk.rand); err != nil {
-		return nil, fmt.Errorf("authenticating with management key: %w", err)
+		return nil, fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
 	return ykGenerateKey(yk.tx, slot, opts)
 }
@@ -809,15 +827,15 @@ func (yk *YubiKey) GenerateKey(key [24]byte, slot Slot, opts Key) (crypto.Public
 func ykGenerateKey(tx *scTx, slot Slot, o Key) (crypto.PublicKey, error) {
 	alg, ok := algorithmsMap[o.Algorithm]
 	if !ok {
-		return nil, fmt.Errorf("unsupported algorithm")
+		return nil, errUnsupportedAlgorithm
 	}
 	tp, ok := touchPolicyMap[o.TouchPolicy]
 	if !ok {
-		return nil, fmt.Errorf("unsupported touch policy")
+		return nil, errUnsupportedTouchPolicy
 	}
 	pp, ok := pinPolicyMap[o.PINPolicy]
 	if !ok {
-		return nil, fmt.Errorf("unsupported pin policy")
+		return nil, errUnsupportedPinPolicy
 	}
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	cmd := apdu{
@@ -833,13 +851,13 @@ func ykGenerateKey(tx *scTx, slot Slot, o Key) (crypto.PublicKey, error) {
 	}
 	resp, err := tx.Transmit(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %w", err)
+		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	obj, _, err := unmarshalASN1(resp, 1, 0x49)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
 	return decodePublic(obj, o.Algorithm)
@@ -851,7 +869,7 @@ func decodePublic(b []byte, alg Algorithm) (crypto.PublicKey, error) {
 	case AlgorithmRSA1024, AlgorithmRSA2048:
 		pub, err := decodeRSAPublic(b)
 		if err != nil {
-			return nil, fmt.Errorf("decoding rsa public key: %w", err)
+			return nil, fmt.Errorf("failed to decode RSA public key: %w", err)
 		}
 		return pub, nil
 	case AlgorithmEC256:
@@ -861,15 +879,15 @@ func decodePublic(b []byte, alg Algorithm) (crypto.PublicKey, error) {
 	case AlgorithmEd25519:
 		pub, err := decodeEd25519Public(b)
 		if err != nil {
-			return nil, fmt.Errorf("decoding ed25519 public key: %w", err)
+			return nil, fmt.Errorf("failed to decode ed25519 public key: %w", err)
 		}
 		return pub, nil
 	default:
-		return nil, fmt.Errorf("unsupported algorithm")
+		return nil, errUnsupportedAlgorithm
 	}
 	pub, err := decodeECPublic(b, curve)
 	if err != nil {
-		return nil, fmt.Errorf("decoding ec public key: %w", err)
+		return nil, fmt.Errorf("failed to decode elliptic curve public key: %w", err)
 	}
 	return pub, nil
 }
@@ -910,12 +928,12 @@ func (k KeyAuth) authTx(yk *YubiKey, pp PINPolicy) error {
 	if pin == "" && k.PINPrompt != nil {
 		p, err := k.PINPrompt()
 		if err != nil {
-			return fmt.Errorf("pin prompt: %w", err)
+			return fmt.Errorf("failed to get PIN from prompt: %w", err)
 		}
 		pin = p
 	}
 	if pin == "" {
-		return fmt.Errorf("pin required but wasn't provided")
+		return errMissingPIN
 	}
 	return ykLogin(yk.tx, pin)
 }
@@ -931,7 +949,7 @@ func pinPolicy(yk *YubiKey, slot Slot) (PINPolicy, error) {
 	if supportsVersion(yk.Version(), 5, 3, 0) {
 		info, err := yk.KeyInfo(slot)
 		if err != nil {
-			return 0, fmt.Errorf("get key info: %w", err)
+			return 0, fmt.Errorf("failed to get key info: %w", err)
 		}
 		return info.PINPolicy, nil
 	}
@@ -945,11 +963,11 @@ func pinPolicy(yk *YubiKey, slot Slot) (PINPolicy, error) {
 			// See https://cunicu.li/go-piv/issues/55
 			return PINPolicyAlways, nil
 		}
-		return 0, fmt.Errorf("get attestation cert: %w", err)
+		return 0, fmt.Errorf("failed to get attestation cert: %w", err)
 	}
 	a, err := parseAttestation(cert)
 	if err != nil {
-		return 0, fmt.Errorf("parse attestation cert: %w", err)
+		return 0, fmt.Errorf("failed to parse attestation cert: %w", err)
 	}
 	if _, ok := pinPolicyMap[a.PINPolicy]; ok {
 		return a.PINPolicy, nil
@@ -993,7 +1011,7 @@ func (yk *YubiKey) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) 
 	case *rsa.PublicKey:
 		return &keyRSA{yk, slot, pub, auth, pp}, nil
 	default:
-		return nil, fmt.Errorf("unsupported public key type: %T", public)
+		return nil, fmt.Errorf("%w: %T", errUnsupportedKeyType, public)
 	}
 }
 
@@ -1059,7 +1077,7 @@ func (yk *YubiKey) SetPrivateKeyInsecure(key [24]byte, slot Slot, private crypto
 
 		params = append(params, privateKey)
 	default:
-		return errors.New("unsupported private key type")
+		return errUnsupportedKeyType
 	}
 
 	elemLenASN1 := marshalASN1Length(uint64(elemLen))
@@ -1076,7 +1094,7 @@ func (yk *YubiKey) SetPrivateKeyInsecure(key [24]byte, slot Slot, private crypto
 	}
 
 	if err := ykAuthenticate(yk.tx, key, yk.rand); err != nil {
-		return fmt.Errorf("authenticating with management key: %w", err)
+		return fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
 
 	return ykImportKey(yk.tx, tags, slot, policy)
@@ -1085,15 +1103,15 @@ func (yk *YubiKey) SetPrivateKeyInsecure(key [24]byte, slot Slot, private crypto
 func ykImportKey(tx *scTx, tags []byte, slot Slot, o Key) error {
 	alg, ok := algorithmsMap[o.Algorithm]
 	if !ok {
-		return fmt.Errorf("unsupported algorithm")
+		return errUnsupportedAlgorithm
 	}
 	tp, ok := touchPolicyMap[o.TouchPolicy]
 	if !ok {
-		return fmt.Errorf("unsupported touch policy")
+		return errUnsupportedTouchPolicy
 	}
 	pp, ok := pinPolicyMap[o.PINPolicy]
 	if !ok {
-		return fmt.Errorf("unsupported pin policy")
+		return errUnsupportedPinPolicy
 	}
 
 	// This command is a Yubico PIV extension.
@@ -1109,7 +1127,7 @@ func ykImportKey(tx *scTx, tags []byte, slot Slot, o Key) error {
 	}
 
 	if _, err := tx.Transmit(cmd); err != nil {
-		return fmt.Errorf("command failed: %w", err)
+		return fmt.Errorf("failed to execute command: %w", err)
 	}
 
 	return nil
@@ -1181,15 +1199,15 @@ func (k *ECDSAPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 		}
 		resp, err := tx.Transmit(cmd)
 		if err != nil {
-			return nil, fmt.Errorf("command failed: %w", err)
+			return nil, fmt.Errorf("failed to execute command: %w", err)
 		}
 		sig, _, err := unmarshalASN1(resp, 1, 0x1c) // 0x7c
 		if err != nil {
-			return nil, fmt.Errorf("unmarshal response: %w", err)
+			return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 		}
 		rs, _, err := unmarshalASN1(sig, 2, 0x02) // 0x82
 		if err != nil {
-			return nil, fmt.Errorf("unmarshal response signature: %w", err)
+			return nil, fmt.Errorf("failed to unmarshal response signature: %w", err)
 		}
 		return rs, nil
 	})
@@ -1267,15 +1285,15 @@ func ykSignECDSA(tx *scTx, slot Slot, pub *ecdsa.PublicKey, digest []byte) ([]by
 	}
 	resp, err := tx.Transmit(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %w", err)
+		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 	sig, _, err := unmarshalASN1(resp, 1, 0x1c) // 0x7c
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	rs, _, err := unmarshalASN1(sig, 2, 0x02) // 0x82
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response signature: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response signature: %w", err)
 	}
 	return rs, nil
 }
@@ -1295,15 +1313,15 @@ func skSignEd25519(tx *scTx, slot Slot, _ ed25519.PublicKey, digest []byte) ([]b
 	}
 	resp, err := tx.Transmit(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %w", err)
+		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 	sig, _, err := unmarshalASN1(resp, 1, 0x1c) // 0x7c
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	rs, _, err := unmarshalASN1(sig, 2, 0x02) // 0x82
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response signature: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response signature: %w", err)
 	}
 	return rs, nil
 }
@@ -1315,7 +1333,7 @@ func unmarshalASN1(b []byte, class, tag int) (obj, rest []byte, err error) {
 		return nil, nil, err
 	}
 	if v.Class != class || v.Tag != tag {
-		return nil, nil, fmt.Errorf("unexpected class=%d and tag=0x%x", v.Class, v.Tag)
+		return nil, nil, fmt.Errorf("%w: got=%d/%x, want=%d/%x", errUnexpectedClassTag, v.Class, v.Tag, class, tag)
 	}
 	return v.Bytes, rest, nil
 }
@@ -1324,23 +1342,23 @@ func decodeECPublic(b []byte, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	p, _, err := unmarshalASN1(b, 2, 0x06)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal points: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal points: %w", err)
 	}
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=96
 	size := curve.Params().BitSize / 8
 	if len(p) != (size*2)+1 {
-		return nil, fmt.Errorf("unexpected points length: %d", len(p))
+		return nil, fmt.Errorf("%w of points: %d", errUnexpectedLength, len(p))
 	}
 	// Are points uncompressed?
 	if p[0] != 0x04 {
-		return nil, fmt.Errorf("points were not uncompressed")
+		return nil, errPointsNotCompressed
 	}
 	p = p[1:]
 	var x, y big.Int
 	x.SetBytes(p[:size])
 	y.SetBytes(p[size:])
 	if !curve.IsOnCurve(&x, &y) {
-		return nil, fmt.Errorf("resulting points are not on curve")
+		return nil, errPointsNotOnCurve
 	}
 	return &ecdsa.PublicKey{Curve: curve, X: &x, Y: &y}, nil
 }
@@ -1350,10 +1368,10 @@ func decodeEd25519Public(b []byte) (ed25519.PublicKey, error) {
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	p, _, err := unmarshalASN1(b, 2, 0x06)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal points: %w", err)
+		return nil, fmt.Errorf("%w points: %w", errUnmarshal, err)
 	}
 	if len(p) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("unexpected points length: %d", len(p))
+		return nil, fmt.Errorf("%w of points: %d", errUnexpectedLength, len(p))
 	}
 	return ed25519.PublicKey(p), nil
 }
@@ -1362,17 +1380,17 @@ func decodeRSAPublic(b []byte) (*rsa.PublicKey, error) {
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	mod, r, err := unmarshalASN1(b, 2, 0x01)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal modulus: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal modulus: %w", err)
 	}
 	exp, _, err := unmarshalASN1(r, 2, 0x02)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal exponent: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal exponent: %w", err)
 	}
 	var n, e big.Int
 	n.SetBytes(mod)
 	e.SetBytes(exp)
 	if !e.IsInt64() {
-		return nil, fmt.Errorf("returned exponent too large: %s", e.String())
+		return nil, fmt.Errorf("%w: returned exponent too large: %s", errUnexpectedLength, e.String())
 	}
 	return &rsa.PublicKey{N: &n, E: int(e.Int64())}, nil
 }
@@ -1385,7 +1403,7 @@ func rsaAlg(pub *rsa.PublicKey) (byte, error) {
 	case 2048:
 		return algRSA2048, nil
 	default:
-		return 0, fmt.Errorf("unsupported rsa key size: %d", size)
+		return 0, fmt.Errorf("%w: %d", errUnsupportedKeySize, size)
 	}
 }
 
@@ -1404,16 +1422,16 @@ func ykDecryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte,
 	}
 	resp, err := tx.Transmit(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %w", err)
+		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 
 	sig, _, err := unmarshalASN1(resp, 1, 0x1c) // 0x7c
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	decrypted, _, err := unmarshalASN1(sig, 2, 0x02) // 0x82
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response signature: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response signature: %w", err)
 	}
 	// Decrypted blob contains a bunch of random data. Look for a NULL byte which
 	// indicates where the plain text starts.
@@ -1422,7 +1440,7 @@ func ykDecryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte,
 			return decrypted[i+1:], nil
 		}
 	}
-	return nil, fmt.Errorf("invalid pkcs#1 v1.5 padding")
+	return nil, errInvalidPKCS1Padding
 }
 
 // PKCS#1 v15 is largely informed by the standard library
@@ -1431,7 +1449,7 @@ func ykDecryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte,
 func ykSignRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	hash := opts.HashFunc()
 	if hash.Size() != len(digest) {
-		return nil, fmt.Errorf("input must be a hashed message")
+		return nil, fmt.Errorf("%w: input must be a hashed message", errUnexpectedLength)
 	}
 
 	alg, err := rsaAlg(pub)
@@ -1453,7 +1471,7 @@ func ykSignRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest [
 	} else {
 		prefix, ok := hashPrefixes[hash]
 		if !ok {
-			return nil, fmt.Errorf("unsupported hash algorithm: crypto.Hash(%d)", hash)
+			return nil, fmt.Errorf("%w: crypto.Hash(%d)", errUnsupportedHashAlgorithm, hash)
 		}
 
 		// https://tools.ietf.org/pdf/rfc2313.pdf#page=9
@@ -1463,7 +1481,7 @@ func ykSignRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest [
 
 		paddingLen := pub.Size() - 3 - len(d)
 		if paddingLen < 0 {
-			return nil, fmt.Errorf("message too large")
+			return nil, rsa.ErrMessageTooLong
 		}
 
 		padding := make([]byte, paddingLen)
@@ -1488,16 +1506,16 @@ func ykSignRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest [
 	}
 	resp, err := tx.Transmit(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("command failed: %w", err)
+		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 
 	sig, _, err := unmarshalASN1(resp, 1, 0x1c) // 0x7c
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	pkcs1v15Sig, _, err := unmarshalASN1(sig, 2, 0x02) // 0x82
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal response signature: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal response signature: %w", err)
 	}
 	return pkcs1v15Sig, nil
 }

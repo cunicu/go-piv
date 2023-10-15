@@ -11,7 +11,10 @@ import (
 	"io"
 )
 
-var errInvalidSaltLen = errors.New("crypto/rsa: PSSOptions.SaltLength cannot be negative")
+var (
+	errInvalidSaltLen = errors.New("invalid salt length")
+	errInvalidHashLen = errors.New("invalid hash length")
+)
 
 // Per RFC 8017, Section 9.1
 //
@@ -44,7 +47,7 @@ func EMSAPSSEncode(mHash []byte, pub *rsa.PublicKey, salt []byte, hash hash.Hash
 	// 2.  Let mHash = Hash(M), an octet string of length hLen.
 
 	if len(mHash) != hLen {
-		return nil, errors.New("crypto/rsa: input must be hashed with given hash")
+		return nil, errInvalidHashLen
 	}
 
 	// 3.  If emLen < hLen + sLen + 2, output "encoding error" and stop.

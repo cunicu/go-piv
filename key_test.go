@@ -26,6 +26,11 @@ import (
 	"time"
 )
 
+var (
+	errUnexpectedValue   = errors.New("unexpected value")
+	errUnexpectedVersion = errors.New("unexpected version")
+)
+
 func TestYubiKeySignECDSA(t *testing.T) {
 	yk, closeCard := newTestYubiKey(t)
 	defer closeCard()
@@ -174,7 +179,7 @@ func TestPINPrompt(t *testing.T) {
 			}
 			s, ok := priv.(crypto.Signer)
 			if !ok {
-				t.Fatalf("expected crypto.Signer got %T", priv)
+				t.Fatalf("expected crypto.Signer: got=%T", priv)
 			}
 			data := sha256.Sum256([]byte("foo"))
 			if _, err := s.Sign(rand.Reader, data[:], crypto.SHA256); err != nil {
@@ -219,7 +224,7 @@ func TestSlots(t *testing.T) {
 
 			if supportsAttestation(yk) {
 				if _, err := yk.Attest(test.slot); err == nil || !errors.Is(err, ErrNotFound) {
-					t.Errorf("attest: got err=%v, want=ErrNotFound", err)
+					t.Errorf("attest: got=%v, want=ErrNotFound", err)
 				}
 			}
 
@@ -457,18 +462,18 @@ func TestTLS13(t *testing.T) {
 	go func() {
 		conn, err := srv.Accept()
 		if err != nil {
-			errCh <- fmt.Errorf("accepting conn: %w", err)
+			errCh <- fmt.Errorf("failed to accept connection: %w", err)
 			return
 		}
 		defer conn.Close()
 
 		got := make([]byte, len(want))
 		if _, err := io.ReadFull(conn, got); err != nil {
-			errCh <- fmt.Errorf("read data: %w", err)
+			errCh <- fmt.Errorf("failed to read data: %w", err)
 			return
 		}
 		if !bytes.Equal(want, got) {
-			errCh <- fmt.Errorf("unexpected value read: %s", got)
+			errCh <- fmt.Errorf("%w: got=%s, want=%s", errUnexpectedValue, got, want)
 			return
 		}
 		errCh <- nil
@@ -477,18 +482,18 @@ func TestTLS13(t *testing.T) {
 	go func() {
 		conn, err := tls.Dial("tcp", srv.Addr().String(), cliConf)
 		if err != nil {
-			errCh <- fmt.Errorf("dial: %w", err)
+			errCh <- fmt.Errorf("failed to dial: %w", err)
 			return
 		}
 		defer conn.Close()
 
 		if v := conn.ConnectionState().Version; v != tls.VersionTLS13 {
-			errCh <- fmt.Errorf("client got version 0x%x, want=0x%x", v, tls.VersionTLS13)
+			errCh <- fmt.Errorf("%w: got=0x%x, want=0x%x", errUnexpectedVersion, v, tls.VersionTLS13)
 			return
 		}
 
 		if _, err := conn.Write(want); err != nil {
-			errCh <- fmt.Errorf("write: %w", err)
+			errCh <- fmt.Errorf("failed to write: %w", err)
 			return
 		}
 		errCh <- nil
@@ -794,7 +799,7 @@ func TestYubiKeyPrivateKeyPINError(t *testing.T) {
 
 	auth := KeyAuth{
 		PINPrompt: func() (string, error) {
-			return "", errors.New("test error")
+			return "", errors.New("test error") //nolint:goerr113
 		},
 	}
 
@@ -850,10 +855,10 @@ func TestRetiredKeyManagementSlot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gotSlot, gotOk := RetiredKeyManagementSlot(tt.key)
 			if gotSlot != tt.wantSlot {
-				t.Errorf("RetiredKeyManagementSlot() got = %v, want %v", gotSlot, tt.wantSlot)
+				t.Errorf("RetiredKeyManagementSlot() got=%v, want=%v", gotSlot, tt.wantSlot)
 			}
 			if gotOk != tt.wantOk {
-				t.Errorf("RetiredKeyManagementSlot() got1 = %v, want %v", gotOk, tt.wantOk)
+				t.Errorf("RetiredKeyManagementSlot() got=%v, want=%v", gotOk, tt.wantOk)
 			}
 		})
 	}

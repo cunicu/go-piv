@@ -134,9 +134,9 @@ func (t *scTx) Close() error {
 func (t *scTx) transmit(req []byte) (more bool, b []byte, err error) {
 	resp, err := t.Card.Transmit(req)
 	if err != nil {
-		return false, nil, fmt.Errorf("transmitting request: %w", err)
+		return false, nil, fmt.Errorf("failed to transmit request: %w", err)
 	} else if len(resp) < 2 {
-		return false, nil, fmt.Errorf("scard response too short: %d", len(resp))
+		return false, nil, fmt.Errorf("%w: want>=2B, got=%dB", errUnexpectedLength, len(resp))
 	}
 	sw1 := resp[len(resp)-2]
 	sw2 := resp[len(resp)-1]
@@ -164,7 +164,7 @@ func (t *scTx) Transmit(d apdu) ([]byte, error) {
 		data = data[maxAPDUDataSize:]
 		_, r, err := t.transmit(req)
 		if err != nil {
-			return nil, fmt.Errorf("transmitting initial chunk %w", err)
+			return nil, fmt.Errorf("failed to transmit initial chunk %w", err)
 		}
 		resp = append(resp, r...)
 	}
@@ -187,7 +187,7 @@ func (t *scTx) Transmit(d apdu) ([]byte, error) {
 		var r []byte
 		hasMore, r, err = t.transmit(req)
 		if err != nil {
-			return nil, fmt.Errorf("reading further response: %w", err)
+			return nil, fmt.Errorf("failed to read further response: %w", err)
 		}
 		resp = append(resp, r...)
 	}
