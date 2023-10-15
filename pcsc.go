@@ -12,7 +12,7 @@ import (
 
 // AuthErr is an error indicating an authentication error occurred (wrong PIN or blocked).
 type AuthErr struct {
-	// Retries is the number of retries remaining if this error resulted from a retriable
+	// Retries is the number of retries remaining if this error resulted from a retry-able
 	// authentication attempt.  If the authentication method is blocked or does not support
 	// retries, this will be 0.
 	Retries int

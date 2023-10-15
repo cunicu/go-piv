@@ -308,7 +308,7 @@ Fqyi4+JE014cSgR57Jcu3dZiehB6UtAPgad9L5cNvua/IWRmm+ANy3O2LH++Pyl8
 SREzU8onbBsjMg9QDiSf5oJLKvd/Ren+zGY7
 -----END CERTIFICATE-----`
 
-// Yubikeys manufactured sometime in 2018 and prior to mid-2017
+// YubiKeys manufactured sometime in 2018 and prior to mid-2017
 // were certified using the U2F root CA with serial number 457200631
 // See https://github.com/Yubico/developers.yubico.com/pull/392/commits/a58f1003f003e04fc9baf09cad9f64f0c284fd47
 // Cert available at https://developers.yubico.com/U2F/yubico-u2f-ca-certs.txt
@@ -544,7 +544,7 @@ func (yk *YubiKey) AttestationCertificate() (*x509.Certificate, error) {
 // https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
 //
 // Certificates returned by this method MUST NOT be used for anything other than
-// attestion or determining the slots public key. For example, the certificate
+// attestation or determining the slots public key. For example, the certificate
 // is NOT suitable for TLS.
 //
 // If the slot doesn't have a key, the returned error wraps ErrNotFound.
@@ -669,7 +669,7 @@ func (yk *YubiKey) KeyInfo(slot Slot) (KeyInfo, error) {
 	return ki, nil
 }
 
-// Certificate returns the certifiate object stored in a given slot.
+// Certificate returns the certificate object stored in a given slot.
 //
 // If a certificate hasn't been set in the provided slot, the returned error
 // wraps ErrNotFound.
