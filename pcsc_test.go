@@ -89,7 +89,7 @@ func TestErrors(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		err := &apduErr{tc.sw1, tc.sw2}
+		err := &apduError{tc.sw1, tc.sw2}
 		if errors.Is(err, ErrNotFound) != tc.isErrNotFound {
 			var s string
 			if !tc.isErrNotFound {
@@ -98,7 +98,7 @@ func TestErrors(t *testing.T) {
 			t.Errorf("%q should%s be ErrNotFound", tc.desc, s)
 		}
 
-		var authErr AuthErr
+		var authErr AuthError
 		if errors.As(err, &authErr) != tc.isAuthErr {
 			var s string
 			if !tc.isAuthErr {

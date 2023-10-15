@@ -3,6 +3,6 @@
 
 module cunicu.li/go-piv
 
-go 1.16
+go 1.21
 
 require github.com/ebfe/scard v0.0.0-20230420082256-7db3f9b7c8a7
