@@ -26,12 +26,11 @@ func TestPINPolicy(t *testing.T) {
 	// for imported keys, using the attestation certificate to derive the PIN
 	// policy fails. So we check that pinPolicy succeeds with imported keys.
 	priv := ephemeralKey(t, AlgorithmEC256)
-	err := yk.SetPrivateKeyInsecure(DefaultManagementKey, SlotAuthentication, priv, Key{
+	if err := yk.SetPrivateKeyInsecure(DefaultManagementKey, SlotAuthentication, priv, Key{
 		Algorithm:   AlgorithmEC256,
 		PINPolicy:   PINPolicyNever,
 		TouchPolicy: TouchPolicyNever,
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("import key: %v", err)
 	}
 	if got, err := pinPolicy(yk, SlotAuthentication); err != nil || got != PINPolicyNever {

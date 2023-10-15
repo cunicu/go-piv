@@ -34,8 +34,7 @@ func marshalASN1(tag byte, data []byte) []byte {
 
 func unmarshalASN1(b []byte, class, tag int) (obj, rest []byte, err error) {
 	var v asn1.RawValue
-	rest, err = asn1.Unmarshal(b, &v)
-	if err != nil {
+	if rest, err = asn1.Unmarshal(b, &v); err != nil {
 		return nil, nil, err
 	}
 	if v.Class != class || v.Tag != tag {
