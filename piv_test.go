@@ -22,7 +22,7 @@ import (
 var canModifyYubiKey bool
 
 func init() {
-	flag.BoolVar(&canModifyYubiKey, "wipe-yubikey", false,
+	flag.BoolVar(&canModifyYubiKey, "reset-yubikey", false,
 		"Flag required to run tests that access the yubikey")
 }
 
@@ -65,7 +65,7 @@ func newTestYubiKey(t *testing.T) (*YubiKey, func()) {
 			continue
 		}
 		if !canModifyYubiKey {
-			t.Skip("not running test that accesses yubikey, provide --wipe-yubikey flag")
+			t.Skip("not running test that accesses yubikey, provide --reset-yubikey flag")
 		}
 		yk, err := Open(card)
 		if err != nil {
@@ -96,7 +96,7 @@ func TestMultipleConnections(t *testing.T) {
 			continue
 		}
 		if !canModifyYubiKey {
-			t.Skip("not running test that accesses yubikey, provide --wipe-yubikey flag")
+			t.Skip("not running test that accesses yubikey, provide --reset-yubikey flag")
 		}
 		yk, err := Open(card)
 		if err != nil {
