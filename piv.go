@@ -242,8 +242,7 @@ func (yk *YubiKey) Reset() error {
 	puk := pukInt.String()
 
 	for {
-		err := ykLogin(yk.tx, pin)
-		if err == nil {
+		if err := ykLogin(yk.tx, pin); err == nil {
 			// TODO: do we care about a 1/100million chance?
 			return fmt.Errorf("%w with random PIN", errExpectedError)
 		}
@@ -257,8 +256,7 @@ func (yk *YubiKey) Reset() error {
 	}
 
 	for {
-		err := yk.SetPUK(puk, puk)
-		if err == nil {
+		if err := yk.SetPUK(puk, puk); err == nil {
 			// TODO: do we care about a 1/100million chance?
 			return fmt.Errorf("%w with random PUK", errExpectedError)
 		}

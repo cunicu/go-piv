@@ -136,8 +136,7 @@ func TestKeyInfo(t *testing.T) {
 				want.Origin = OriginGenerated
 				want.PublicKey = pub
 			} else {
-				err := yk.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, test.importKey, test.policy)
-				if err != nil {
+				if err := yk.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, test.importKey, test.policy); err != nil {
 					t.Fatalf("importing key: %v", err)
 				}
 				want.Origin = OriginImported

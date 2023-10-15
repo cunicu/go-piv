@@ -118,11 +118,10 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 				t.Fatalf("generating private key: %v", err)
 			}
 
-			err = yk.SetPrivateKeyInsecure(DefaultManagementKey, tt.slot, generated, Key{
+			if err = yk.SetPrivateKeyInsecure(DefaultManagementKey, tt.slot, generated, Key{
 				PINPolicy:   PINPolicyNever,
 				TouchPolicy: TouchPolicyNever,
-			})
-			if !errors.Is(err, tt.wantErr) {
+			}); !errors.Is(err, tt.wantErr) {
 				t.Fatalf("SetPrivateKeyInsecure(): wantErr=%v, got err=%v", tt.wantErr, err)
 			}
 			if err != nil {

@@ -140,8 +140,7 @@ func (v *Verifier) Verify(attestationCert, slotCert *x509.Certificate) (*Attesta
 
 	o.Intermediates.AddCert(attestationCert)
 
-	_, err := slotCert.Verify(o)
-	if err != nil {
+	if _, err := slotCert.Verify(o); err != nil {
 		return nil, fmt.Errorf("failed to verify attestation certificate: %w", err)
 	}
 	return parseAttestation(slotCert)
@@ -181,9 +180,8 @@ func (yk *YubiKey) AttestationCertificate() (*x509.Certificate, error) {
 // is NOT suitable for TLS.
 //
 // If the slot doesn't have a key, the returned error wraps ErrNotFound.
-func (yk *YubiKey) Attest(slot Slot) (*x509.Certificate, error) {
-	cert, err := ykAttest(yk.tx, slot)
-	if err == nil {
+func (yk *YubiKey) Attest(slot Slot) (cert *x509.Certificate, err error) {
+	if cert, err = ykAttest(yk.tx, slot); err == nil {
 		return cert, nil
 	}
 	var e *apduError
@@ -203,8 +201,8 @@ func ykAttest(tx *scTx, slot Slot) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 	if bytes.HasPrefix(resp, []byte{0x70}) {
-		b, _, err := unmarshalASN1(resp, 0, 0x10) // tag 0x70
-		if err != nil {
+		b, _, err := unmarshalASN1(resp, 0, 0x10)
+		if err != nil { // tag 0x70
 			return nil, fmt.Errorf("failed to unmarshal certificate: %w", err)
 		}
 		resp = b
