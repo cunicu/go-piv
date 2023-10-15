@@ -1,17 +1,20 @@
 <!--
   SPDX-FileCopyrightText: 2020 Google LLC
+  SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
   SPDX-License-Identifier: Apache-2.0
 -->
 
-# A Go YubiKey PIV implementation
+# go-piv: A Go implementation of the PIV standards for smart card certificate management
 
-**Note:** This is not an officially supported Google product
+[![GitHub build](https://img.shields.io/github/actions/workflow/status/cunicu/go-piv/build.yaml?style=flat-square)](https://github.com/cunicu/go-piv/actions)
+[![goreportcard](https://goreportcard.com/badge/github.com/cunicu/go-piv?style=flat-square)](https://goreportcard.com/report/github.com/cunicu/go-piv)
+[![Codecov](https://img.shields.io/codecov/c/github/cunicu/go-piv?token=WWQ6SR16LA&style=flat-square)](https://app.codecov.io/gh/cunicu/go-piv)
+[![License](https://img.shields.io/github/license/cunicu/go-piv?style=flat-square)](https://github.com/cunicu/go-piv/blob/main/LICENSE)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/cunicu/go-piv?style=flat-square)
+[![Go Reference](https://pkg.go.dev/badge/github.com/cunicu/go-piv.svg)](https://pkg.go.dev/github.com/cunicu/go-piv)
 
-[![Reference](https://pkg.go.dev/badge/cunicu.li/go-piv)](https://pkg.go.dev/cunicu.li/go-piv)
-
-YubiKeys implement the PIV specification for managing smart card certificates.
-This applet is a simpler alternative to GPG for managing asymmetric keys on a
-YubiKey.
+YubiKeys provide an applet implementing the [PIV standards](https://csrc.nist.gov/projects/piv/piv-standards-and-supporting-documentation) for managing certificates on a smart card.
+This applet is a simpler alternative to GPG for managing asymmetric keys on a YubiKey.
 
 This package is an alternative to Paul Tagliamonte's [go-ykpiv](https://github.com/paultag/go-ykpiv),
 a wrapper for YubiKey's `ykpiv.h` C library. This package aims to provide:
@@ -19,6 +22,13 @@ a wrapper for YubiKey's `ykpiv.h` C library. This package aims to provide:
 * Better error messages
 * Idiomatic Go APIs
 * Modern features such as PIN protected management keys
+
+This package is a fork from [`github.com/go-piv/piv-go`](https://github.com/go-piv/piv-go) with the following changes:
+
+* Replacement of in-repo PCSC bindings with [`github.com/ebfe/scard`](https://github.com/ebfe/scard).
+* Improved CI tests, linting and repository structure.
+* Made repository [REUSE](https://reuse.software) compliant.
+* Removal of Google's CLA.
 
 ## Examples
 
@@ -52,6 +62,7 @@ for _, card := range cards {
         break
     }
 }
+
 if yk == nil {
     // ...
 }
@@ -62,6 +73,7 @@ key := piv.Key{
     PINPolicy:   piv.PINPolicyAlways,
     TouchPolicy: piv.TouchPolicyAlways,
 }
+
 pub, err := yk.GenerateKey(piv.DefaultManagementKey, piv.SlotAuthentication, key)
 if err != nil {
     // ...
@@ -95,14 +107,17 @@ newPINInt, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
 if err != nil {
     // ...
 }
+
 newPUKInt, err := rand.Int(rand.Reader, big.NewInt(100_000_000))
 if err != nil {
     // ...
 }
+
 var newKey [24]byte
 if _, err := io.ReadFull(rand.Reader, newKey[:]); err != nil {
     // ...
 }
+
 // Format with leading zeros.
 newPIN := fmt.Sprintf("%06d", newPINInt)
 newPUK := fmt.Sprintf("%08d", newPUKInt)
@@ -111,12 +126,15 @@ newPUK := fmt.Sprintf("%08d", newPUKInt)
 if err := yk.SetManagementKey(piv.DefaultManagementKey, newKey); err != nil {
     // ...
 }
+
 if err := yk.SetPUK(piv.DefaultPUK, newPUK); err != nil {
     // ...
 }
+
 if err := yk.SetPIN(piv.DefaultPIN, newPIN); err != nil {
     // ...
 }
+
 // Store management key on the YubiKey.
 m := piv.Metadata{ManagementKey: &newKey}
 if err := yk.SetMetadata(newKey, m); err != nil {
@@ -133,9 +151,11 @@ m, err := yk.Metadata(pin)
 if err != nil {
     // ...
 }
+
 if m.ManagementKey == nil {
     // ...
 }
+
 key := *m.ManagementKey
 ```
 
@@ -148,6 +168,7 @@ cert, err := x509.ParseCertificate(certDER)
 if err != nil {
     // ...
 }
+
 if err := yk.SetCertificate(managementKey, piv.SlotAuthentication, cert); err != nil {
     // ...
 }
@@ -161,10 +182,12 @@ cert, err := yk.Certificate(piv.SlotAuthentication)
 if err != nil {
     // ...
 }
+
 priv, err := yk.PrivateKey(piv.SlotAuthentication, cert.PublicKey, auth)
 if err != nil {
     // ...
 }
+
 s := &http.Server{
     TLSConfig: &tls.Config{
         Certificates: []tls.Certificate{
@@ -235,36 +258,30 @@ On MacOS, piv-go doesn't require any additional packages.
 To build on Linux, piv-go requires PCSC lite.
 To install on Debian-based distributions, run:
 
+### Debian, Ubuntu
+
 ```shell
 sudo apt-get install libpcsclite-dev
 ```
 
-On Fedora:
+### RHEL, Fedora, Rocky Linux
 
 ```shell
 sudo yum install pcsc-lite-devel
 ```
 
-On CentOS:
-
-```shell
-sudo yum install 'dnf-command(config-manager)'
-sudo yum config-manager --set-enabled PowerTools
-sudo yum install pcsc-lite-devel
-```
-
-On FreeBSD:
+### FreeBSD
 
 ```shell
 sudo pkg install pcsc-lite
 ```
 
-On Windows:
+### Windows
 
 No prerequisites are needed. The default driver by Microsoft supports all functionalities
-which get tested by unittests. However if you run into problems try the official
-[YubiKey Smart Card Minidriver](https://www.yubico.com/products/services-software/download/smart-card-drivers-tools/). Yubico states on their website the driver adds [_additional
-smart functionality_](https://www.yubico.com/authentication-standards/smart-card/).
+which get tested by unit tests. However if you run into problems try the official
+[YubiKey Smart Card Minidriver](https://www.yubico.com/products/services-software/download/smart-card-drivers-tools/).
+Yubico states on their website the driver adds [_additional smart functionality_](https://www.yubico.com/authentication-standards/smart-card/).
 
 Please notice the following:
 
@@ -301,10 +318,19 @@ requirement for it to be written in any particular langauge. As an alternative
 to [pault.ag/go/ykpiv][go-ykpiv] this package re-implements ykpiv in Go instead
 of calling it.
 
-## Alternatives
+## Authors
 
-OpenSSH has experimental support for U2F keys ([announcement][openssh-u2f]) that
-directly use browser U2F challenges for smart cards.
+go-piv has been forked from [go-piv/piv-go](https://github.com/go-piv/piv-go) at commit [8c3a0ff](https://github.com/go-piv/piv-go/commit/8c3a0ffe023df2a9e11cb82a2e3292ae285549a2)
+
+* Eric Chiang ([@ericchiang](https://github.com/ericchiang))
+* Steffen Vogel ([@stv0g](https://github.com/stv0g))
+
+## License
+
+go-piv is licensed under the [Apache 2.0](./LICENSE) license.
+
+* SPDX-FileCopyrightText: 2020 Google LLC
+* SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
+* SPDX-License-Identifier: Apache-2.0
 
 [go-ykpiv]: https://github.com/paultag/go-ykpiv
-[openssh-u2f]: https://marc.info/?l=openssh-unix-dev&m=157259802529972&w=2
