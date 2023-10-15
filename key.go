@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	rsafork "github.com/go-piv/piv-go/third_party/rsa"
+	rsafork "cunicu.li/go-piv/internal/rsa"
 )
 
 // errMismatchingAlgorithms is returned when a cryptographic operation
@@ -778,7 +778,7 @@ type Key struct {
 	// BUG(ericchiang): some older YubiKeys (third generation) will silently
 	// drop this value. If PINPolicyNever or PINPolicyOnce is supplied but the
 	// key still requires a PIN every time, you may be using a buggy key and
-	// should supply PINPolicyAlways. See https://github.com/go-piv/piv-go/issues/60
+	// should supply PINPolicyAlways. See https://cunicu.li/go-piv/issues/60
 	PINPolicy PINPolicy
 	// TouchPolicy for the key.
 	TouchPolicy TouchPolicy
@@ -888,7 +888,7 @@ func (k KeyAuth) authTx(yk *YubiKey, pp PINPolicy) error {
 
 	// PINPolicyAlways should always prompt a PIN even if the key says that
 	// login isn't needed.
-	// https://github.com/go-piv/piv-go/issues/49
+	// https://cunicu.li/go-piv/issues/49
 	if pp != PINPolicyAlways && !ykLoginNeeded(yk.tx) {
 		return nil
 	}
@@ -929,7 +929,7 @@ func pinPolicy(yk *YubiKey, slot Slot) (PINPolicy, error) {
 			// Attestation cert command not supported, probably an older YubiKey.
 			// Guess PINPolicyAlways.
 			//
-			// See https://github.com/go-piv/piv-go/issues/55
+			// See https://cunicu.li/go-piv/issues/55
 			return PINPolicyAlways, nil
 		}
 		return 0, fmt.Errorf("get attestation cert: %v", err)
