@@ -42,7 +42,7 @@ func testGetVersion(t *testing.T, h *scard.Card) {
 func testRequiresVersion(t *testing.T, yk *YubiKey, major, minor, patch int) {
 	v := yk.Version()
 	if !supportsVersion(v, major, minor, patch) {
-		t.Skipf("test requires yubikey version %d.%d.%d: got %d.%d.%d", major, minor, patch, v.Major, v.Minor, v.Patch)
+		t.Skipf("test requires yubikey version %d.%d.%d: got=%d.%d.%d", major, minor, patch, v.Major, v.Minor, v.Patch)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestMultipleConnections(t *testing.T) {
 			t.Fatalf("expected scard.Error, got %T", oerr)
 		}
 		if !errors.Is(e, scard.ErrSharingViolation) {
-			t.Fatalf("expected return code 0x8010000B (sharing vialation), got 0x%x", e)
+			t.Fatalf("expected return code 0x8010000B (sharing vialation), got=0x%x", e)
 		}
 		return
 	}
