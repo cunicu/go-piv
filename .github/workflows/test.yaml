@@ -1,49 +1,82 @@
-# SPDX-FileCopyrightText: 2020 Google LLC
+# SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
 # SPDX-License-Identifier: Apache-2.0
 
-name: test
-on: 
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/github-workflow.json
+---
+name: Build
+
+on:
   push:
     branches:
-      - master
+    - main
   pull_request:
-    branches:
-      - master
 
 jobs:
   build:
+    name: Build
+
+    runs-on: ${{ matrix.os }}
+
     strategy:
+      fail-fast: false
       matrix:
-        go-version: [1.20.x, 1.21.x]
-    name: Linux
-    runs-on: ubuntu-latest
+        os: [ ubuntu-latest, macOS-latest, windows-latest ]
+
     steps:
-    - name: Set up Go
-      uses: actions/setup-go@v2
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get install -y
+            libpcsclite-dev
+            pcscd
+            pcsc-tools
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
       with:
-        go-version: ${{ matrix.go-version }}
-      id: go
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-    - name: Install libpcsc
-      run: sudo apt-get install -y libpcsclite-dev pcscd pcsc-tools
-    - name: Test
-      run: go test -v ./...
-  build-windows:
-    strategy:
-      matrix:
-        go-version: [1.20.x, 1.21.x]
-    name: Windows
-    runs-on: windows-latest
-    steps:
-    - name: Set up Go
-      uses: actions/setup-go@v2
+        go-version-file: go.mod
+        check-latest: true
+
+    - name: Lint
+      # TODO: golangci-lint v1.54 is currently broken on Windows?
+      if: matrix.os != 'windows-latest'
+      uses: golangci/golangci-lint-action@v3
       with:
-        go-version: ${{ matrix.go-version }}
-      id: go
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-    - name: Test
-      run: go build ./...
-      env:
-        CGO_ENABLED: 0
+        version: v1.54.0
+      continue-on-error: true
+
+    - name: Set up gotestfmt
+      run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+
+    - name: Run Go tests
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        set -euo pipefail
+        go test \
+          -v \
+          -json \
+          -coverpkg ./... \
+          -tags ci \
+          -coverprofile cover.profile \
+          ./... 2>&1 | \
+        tee gotest.log | \
+        gotestfmt
+
+    - name: Upload test log
+      if: always() && matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-log
+        path: gotest.log
+        if-no-files-found: error
+
+    - name: Build
+      if: matrix.os != 'ubuntu-latest'
+      run: go build .
+
+    - name: Report test coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: cover.profile
