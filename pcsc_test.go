@@ -38,7 +38,7 @@ func runHandleTest(t *testing.T, f func(t *testing.T, h *scard.Card)) {
 			}
 		}
 		if reader == "" {
-			t.Skip("could not find yubikey, skipping testing")
+			t.Skip("could not find YubiKey, skipping testing")
 		}
 		h, err := c.Connect(reader, scard.ShareExclusive, scard.ProtocolT1)
 		if err != nil {

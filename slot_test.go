@@ -18,7 +18,7 @@ import (
 func TestSlots(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	if err := c.Reset(); err != nil {
-		t.Fatalf("resetting yubikey: %v", err)
+		t.Fatalf("resetting card: %v", err)
 	}
 	closeCard()
 

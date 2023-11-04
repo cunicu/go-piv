@@ -5,7 +5,7 @@ package piv
 
 import "fmt"
 
-// KeyAuth is used to authenticate against the YubiKey on each signing  and
+// KeyAuth is used to authenticate against the card on each signing  and
 // decryption request.
 type KeyAuth struct {
 	// PIN, if provided, is a static PIN used to authenticate against the key.
@@ -13,7 +13,7 @@ type KeyAuth struct {
 	PIN string
 	// PINPrompt can be used to interactively request the PIN from the user. The
 	// method is only called when needed. For example, if a key specifies
-	// PINPolicyOnce, PINPrompt will only be called once per YubiKey struct.
+	// PINPolicyOnce, PINPrompt will only be called once per card struct.
 	PINPrompt func() (pin string, err error)
 
 	// PINPolicy can be used to specify the PIN caching strategy for the slot. If

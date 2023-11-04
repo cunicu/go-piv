@@ -15,12 +15,12 @@ import (
 	"github.com/ebfe/scard"
 )
 
-// canModifyYubiKey indicates whether the test running has constented to
+// canModifyCard indicates whether the test running has constented to
 // destroying data on YubiKeys connected to the system.
 //
 //nolint:gochecknoglobals
-var canModifyYubiKey = flag.Bool("reset-yubikey", false,
-	"Flag required to run tests that access the yubikey")
+var canModifyCard = flag.Bool("reset-card", false,
+	"Flag required to run tests that access the smart card")
 
 func testGetVersion(t *testing.T, h *scard.Card) {
 	tx, err := newTx(h)
@@ -40,7 +40,7 @@ func testGetVersion(t *testing.T, h *scard.Card) {
 func testRequiresVersion(t *testing.T, c *Card, major, minor, patch int) {
 	v := c.Version()
 	if !supportsVersion(v, major, minor, patch) {
-		t.Skipf("test requires yubikey version %d.%d.%d: got=%d.%d.%d", major, minor, patch, v.Major, v.Minor, v.Patch)
+		t.Skipf("test requires YubiKey version %d.%d.%d: got=%d.%d.%d", major, minor, patch, v.Major, v.Minor, v.Patch)
 	}
 }
 
@@ -61,24 +61,24 @@ func newTestCard(t *testing.T) (*Card, func()) {
 		if !strings.Contains(strings.ToLower(card), "yubikey") {
 			continue
 		}
-		if !*canModifyYubiKey {
-			t.Skip("not running test that accesses yubikey, provide --reset-yubikey flag")
+		if !*canModifyCard {
+			t.Skip("not running test that accesses card, provide --reset-card flag")
 		}
 		c, err := Open(card)
 		if err != nil {
-			t.Fatalf("getting new yubikey: %v", err)
+			t.Fatalf("getting new card: %v", err)
 		}
 		return c, func() {
 			if err := c.Close(); err != nil {
-				t.Errorf("closing yubikey: %v", err)
+				t.Errorf("closing card: %v", err)
 			}
 		}
 	}
-	t.Skip("no yubikeys detected, skipping")
+	t.Skip("no YubiKeys detected, skipping")
 	return nil, nil
 }
 
-func TestNewYubiKey(t *testing.T) {
+func TestNewCard(t *testing.T) {
 	_, closeCard := newTestCard(t)
 	defer closeCard()
 }
@@ -92,16 +92,16 @@ func TestMultipleConnections(t *testing.T) {
 		if !strings.Contains(strings.ToLower(card), "yubikey") {
 			continue
 		}
-		if !*canModifyYubiKey {
-			t.Skip("not running test that accesses yubikey, provide --reset-yubikey flag")
+		if !*canModifyCard {
+			t.Skip("not running test that accesses card, provide --reset-card flag")
 		}
 		c, err := Open(card)
 		if err != nil {
-			t.Fatalf("getting new yubikey: %v", err)
+			t.Fatalf("getting new card: %v", err)
 		}
 		defer func() {
 			if err := c.Close(); err != nil {
-				t.Errorf("closing yubikey: %v", err)
+				t.Errorf("closing card: %v", err)
 			}
 		}()
 
@@ -118,7 +118,7 @@ func TestMultipleConnections(t *testing.T) {
 		}
 		return
 	}
-	t.Skip("no yubikeys detected, skipping")
+	t.Skip("no YubiKey detected, skipping")
 }
 
 func TestSerial(t *testing.T) {
@@ -166,7 +166,7 @@ func TestReset(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 	if err := c.Reset(); err != nil {
-		t.Fatalf("resetting yubikey: %v", err)
+		t.Fatalf("resetting card: %v", err)
 	}
 	if err := c.VerifyPIN(DefaultPIN); err != nil {
 		t.Fatalf("login: %v", err)

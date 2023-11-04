@@ -129,7 +129,7 @@ func (v *Verifier) Verify(attestationCert, slotCert *x509.Certificate) (*Attesta
 
 	o.Intermediates = x509.NewCertPool()
 
-	// The attestation cert in some yubikey 4 does not encode X509v3 Basic Constraints.
+	// The attestation cert in some YubiKey 4 does not encode X509v3 Basic Constraints.
 	// This isn't valid as per https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.9
 	// (fourth paragraph) and thus makes x509.go validation fail.
 	// Work around this by setting this constraint here.
