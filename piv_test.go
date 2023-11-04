@@ -121,7 +121,7 @@ func TestMultipleConnections(t *testing.T) {
 	t.Skip("no yubikeys detected, skipping")
 }
 
-func TestYubiKeySerial(t *testing.T) {
+func TestSerial(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
@@ -130,7 +130,7 @@ func TestYubiKeySerial(t *testing.T) {
 	}
 }
 
-func TestYubiKeyLoginNeeded(t *testing.T) {
+func TestLoginNeeded(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
@@ -147,7 +147,7 @@ func TestYubiKeyLoginNeeded(t *testing.T) {
 	}
 }
 
-func TestYubiKeyPINRetries(t *testing.T) {
+func TestPINRetries(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 	retries, err := c.Retries()
@@ -159,7 +159,7 @@ func TestYubiKeyPINRetries(t *testing.T) {
 	}
 }
 
-func TestYubiKeyReset(t *testing.T) {
+func TestReset(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
@@ -173,7 +173,7 @@ func TestYubiKeyReset(t *testing.T) {
 	}
 }
 
-func TestYubiKeyLogin(t *testing.T) {
+func TestLogin(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
@@ -182,7 +182,7 @@ func TestYubiKeyLogin(t *testing.T) {
 	}
 }
 
-func TestYubiKeyAuthenticate(t *testing.T) {
+func TestAuthenticate(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
@@ -191,7 +191,7 @@ func TestYubiKeyAuthenticate(t *testing.T) {
 	}
 }
 
-func TestYubiKeySetManagementKey(t *testing.T) {
+func TestSetManagementKey(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
@@ -211,7 +211,7 @@ func TestYubiKeySetManagementKey(t *testing.T) {
 	}
 }
 
-func TestYubiKeyUnblockPIN(t *testing.T) {
+func TestUnblockPIN(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
@@ -238,7 +238,7 @@ func TestYubiKeyUnblockPIN(t *testing.T) {
 	}
 }
 
-func TestYubiKeyChangePIN(t *testing.T) {
+func TestChangePIN(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
@@ -254,7 +254,7 @@ func TestYubiKeyChangePIN(t *testing.T) {
 	}
 }
 
-func TestYubiKeyChangePUK(t *testing.T) {
+func TestChangePUK(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 

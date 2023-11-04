@@ -16,7 +16,7 @@ import (
 // keys. It implements crypto.Signer and the method SharedKey performs
 // Diffie-Hellman key agreements.
 //
-// Keys returned by YubiKey.PrivateKey() may be type asserted to
+// Keys returned by Card.PrivateKey() may be type asserted to
 // *ECDSAPrivateKey, if the slot contains an ECDSA key.
 type ECDSAPrivateKey struct {
 	c    *Card

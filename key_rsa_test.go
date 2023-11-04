@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-func TestYubiKeySignRSA(t *testing.T) {
+func TestSignRSA(t *testing.T) {
 	tests := []struct {
 		name string
 		alg  Algorithm
@@ -70,7 +70,7 @@ func TestYubiKeySignRSA(t *testing.T) {
 	}
 }
 
-func TestYubiKeySignRSAPSS(t *testing.T) {
+func TestSignRSAPSS(t *testing.T) {
 	tests := []struct {
 		name string
 		alg  Algorithm
