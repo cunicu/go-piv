@@ -24,10 +24,10 @@ type Attestation struct {
 	Version Version
 	// Serial is the YubiKey's serial number.
 	Serial uint32
-	// Formfactor indicates the physical type of the YubiKey.
+	// FormFactor indicates the physical type of the YubiKey.
 	//
-	// Formfactor may be empty Formfactor(0) for some YubiKeys.
-	Formfactor Formfactor
+	// FormFactor may be empty FormFactor(0) for some YubiKeys.
+	FormFactor FormFactor
 
 	// PINPolicy set on the slot.
 	PINPolicy PINPolicy
@@ -88,7 +88,7 @@ func (a *Attestation) addExt(e pkix.Extension) error {
 		if len(e.Value) != 1 {
 			return fmt.Errorf("%w: expected 1 byte for form factor, got=%d", errUnexpectedLength, len(e.Value))
 		}
-		a.Formfactor = Formfactor(e.Value[0])
+		a.FormFactor = FormFactor(e.Value[0])
 	}
 	return nil
 }
