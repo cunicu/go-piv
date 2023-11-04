@@ -53,7 +53,7 @@ const (
 	alg3DES    = 0x03
 	algRSA1024 = 0x06
 	algRSA2048 = 0x07
-	algECCP256 = 0x11
+	algECS256  = 0x11
 	algECCP384 = 0x14
 	// non-standard; as implemented by SoloKeys. Chosen for low probability of eventual
 	// clashes, if and when PIV standard adds Ed25519 support
@@ -210,18 +210,21 @@ func loginNeeded(tx *scTx) bool {
 // Retries returns the number of attempts remaining to enter the correct PIN.
 func (c *Card) Retries() (int, error) {
 	cmd := apdu{instruction: insVerify, param2: 0x80}
+
 	_, err := c.tx.Transmit(cmd)
 	if err == nil {
 		return 0, fmt.Errorf("%w from empty pin", errExpectedError)
 	}
-	var e AuthError
-	if errors.As(err, &e) {
-		return e.Retries, nil
+
+	var aErr AuthError
+	if errors.As(err, &aErr) {
+		return aErr.Retries, nil
 	}
+
 	return 0, fmt.Errorf("invalid response: %w", err)
 }
 
-// Reset resets the YubiKey PIV applet to its factory settings, wiping all slots
+// Reset resets the PIV applet to its factory settings, wiping all slots
 // and resetting the PIN, PUK, and Management Key to their default values. This
 // does NOT affect data on other applets, such as GPG or U2F.
 func (c *Card) Reset() error {
@@ -233,6 +236,7 @@ func (c *Card) Reset() error {
 	if err != nil {
 		return fmt.Errorf("failed to generate random PIN: %w", err)
 	}
+
 	pukInt, err := rand.Int(c.rand, maxPIN)
 	if err != nil {
 		return fmt.Errorf("failed to generate random PUK: %w", err)
@@ -242,28 +246,34 @@ func (c *Card) Reset() error {
 	puk := pukInt.String()
 
 	for {
-		if err := login(c.tx, pin); err == nil {
+		err = login(c.tx, pin)
+		if err == nil {
 			// TODO: do we care about a 1/100million chance?
 			return fmt.Errorf("%w with random PIN", errExpectedError)
 		}
+
 		var e AuthError
 		if !errors.As(err, &e) {
-			return fmt.Errorf("blocking PIN: %w", err)
+			return fmt.Errorf("failed to block PIN: %w", err)
 		}
+
 		if e.Retries == 0 {
 			break
 		}
 	}
 
 	for {
-		if err := c.SetPUK(puk, puk); err == nil {
+		err := c.SetPUK(puk, puk)
+		if err == nil {
 			// TODO: do we care about a 1/100million chance?
 			return fmt.Errorf("%w with random PUK", errExpectedError)
 		}
+
 		var e AuthError
 		if !errors.As(err, &e) {
 			return fmt.Errorf("blocking PUK: %w", err)
 		}
+
 		if e.Retries == 0 {
 			break
 		}
@@ -271,8 +281,9 @@ func (c *Card) Reset() error {
 
 	cmd := apdu{instruction: insReset}
 	if _, err := c.tx.Transmit(cmd); err != nil {
-		return fmt.Errorf("failed to reset YubiKey: %w", err)
+		return err
 	}
+
 	return nil
 }
 

@@ -12,12 +12,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSignRSA(t *testing.T) {
@@ -43,29 +45,23 @@ func TestSignRSA(t *testing.T) {
 				PINPolicy:   PINPolicyNever,
 			}
 			pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
-			if err != nil {
-				t.Fatalf("generating key: %v", err)
-			}
+			require.NoError(t, err, "Failed to generate key")
+
 			pub, ok := pubKey.(*rsa.PublicKey)
-			if !ok {
-				t.Fatalf("public key is not an rsa key")
-			}
+			require.True(t, ok, "Public key is not an RSA key")
+
 			data := sha256.Sum256([]byte("hello"))
 			priv, err := c.PrivateKey(slot, pub, KeyAuth{})
-			if err != nil {
-				t.Fatalf("getting private key: %v", err)
-			}
+			require.NoError(t, err, "Failed to get private key")
+
 			s, ok := priv.(crypto.Signer)
-			if !ok {
-				t.Fatalf("private key didn't implement crypto.Signer")
-			}
+			require.True(t, ok, "Private key didn't implement crypto.Signer")
+
 			out, err := s.Sign(rand.Reader, data[:], crypto.SHA256)
-			if err != nil {
-				t.Fatalf("signing failed: %v", err)
-			}
-			if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, data[:], out); err != nil {
-				t.Errorf("failed to verify signature: %v", err)
-			}
+			require.NoError(t, err, "Failed to sign failed")
+
+			err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, data[:], out)
+			assert.NoError(t, err, "Failed to verify signature")
 		})
 	}
 }
@@ -93,31 +89,24 @@ func TestSignRSAPSS(t *testing.T) {
 				PINPolicy:   PINPolicyNever,
 			}
 			pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
-			if err != nil {
-				t.Fatalf("generating key: %v", err)
-			}
+			require.NoError(t, err, "Failed to generate key")
+
 			pub, ok := pubKey.(*rsa.PublicKey)
-			if !ok {
-				t.Fatalf("public key is not an rsa key")
-			}
+			require.True(t, ok, "Public key is not an RSA key")
+
 			data := sha256.Sum256([]byte("hello"))
 			priv, err := c.PrivateKey(slot, pub, KeyAuth{})
-			if err != nil {
-				t.Fatalf("getting private key: %v", err)
-			}
+			require.NoError(t, err, "Failed to get private key")
+
 			s, ok := priv.(crypto.Signer)
-			if !ok {
-				t.Fatalf("private key didn't implement crypto.Signer")
-			}
+			require.True(t, ok, "Private key didn't implement crypto.Signer")
 
 			opt := &rsa.PSSOptions{Hash: crypto.SHA256}
 			out, err := s.Sign(rand.Reader, data[:], opt)
-			if err != nil {
-				t.Fatalf("signing failed: %v", err)
-			}
-			if err := rsa.VerifyPSS(pub, crypto.SHA256, data[:], out, opt); err != nil {
-				t.Errorf("failed to verify signature: %v", err)
-			}
+			require.NoError(t, err, "Failed to sign failed")
+
+			err = rsa.VerifyPSS(pub, crypto.SHA256, data[:], out, opt)
+			assert.NoError(t, err, "Failed to verify signature")
 		})
 	}
 }
@@ -155,53 +144,40 @@ func TestSetRSAPrivateKey(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			c, closeCard := newTestCard(t)
 			defer closeCard()
 
-			generated, err := rsa.GenerateKey(rand.Reader, tt.bits)
-			if err != nil {
-				t.Fatalf("generating private key: %v", err)
-			}
+			generated, err := rsa.GenerateKey(rand.Reader, test.bits)
+			require.NoError(t, err, "Failed to generate private key")
 
-			if err = c.SetPrivateKeyInsecure(DefaultManagementKey, tt.slot, generated, Key{
+			err = c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, generated, Key{
 				PINPolicy:   PINPolicyNever,
 				TouchPolicy: TouchPolicyNever,
-			}); !errors.Is(err, tt.wantErr) {
-				t.Fatalf("SetPrivateKeyInsecure(): wantErr=%v, got err=%v", tt.wantErr, err)
-			}
+			})
+			require.ErrorIs(t, err, test.wantErr)
 			if err != nil {
 				return
 			}
 
-			priv, err := c.PrivateKey(tt.slot, &generated.PublicKey, KeyAuth{})
-			if err != nil {
-				t.Fatalf("getting private key: %v", err)
-			}
+			priv, err := c.PrivateKey(test.slot, &generated.PublicKey, KeyAuth{})
+			require.NoError(t, err, "Failed to get private key")
 
 			data := []byte("Test data that we will encrypt")
 
 			// Encrypt the data using our generated key
 			encrypted, err := rsa.EncryptPKCS1v15(rand.Reader, &generated.PublicKey, data)
-			if err != nil {
-				t.Fatalf("encrypting data: %v", err)
-			}
+			require.NoError(t, err, "Failed to encrypt data")
 
 			deviceDecrypter, ok := priv.(crypto.Decrypter)
-			if !ok {
-				t.Fatalf("Pivate key is not a crypto.Decrypter")
-			}
+			require.True(t, ok, "Private key is not a crypto.Decrypter")
 
 			// Decrypt the data on the device
 			decrypted, err := deviceDecrypter.Decrypt(rand.Reader, encrypted, nil)
-			if err != nil {
-				t.Fatalf("decrypting data: %v", err)
-			}
+			require.NoError(t, err, "Failed to decrypt data")
 
-			if !bytes.Equal(data, decrypted) {
-				t.Fatalf("decrypted data is different to the source data")
-			}
+			require.Equal(t, data, decrypted, "Decrypted data is different to the source data")
 		})
 	}
 }
@@ -216,13 +192,10 @@ func TestTLS13(t *testing.T) {
 		PINPolicy:   PINPolicyNever,
 	}
 	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
-	if err != nil {
-		t.Fatalf("generating key: %v", err)
-	}
+	require.NoError(t, err, "Failed to generate key")
+
 	priv, err := c.PrivateKey(slot, pub, KeyAuth{})
-	if err != nil {
-		t.Fatalf("getting private key: %v", err)
-	}
+	require.NoError(t, err, "Failed to get private key")
 
 	tmpl := &x509.Certificate{
 		Subject:      pkix.Name{CommonName: "test"},
@@ -238,13 +211,11 @@ func TestTLS13(t *testing.T) {
 	}
 
 	rawCert, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, pub, priv)
-	if err != nil {
-		t.Fatalf("creating certificate: %v", err)
-	}
+	require.NoError(t, err, "Failed to create certificate")
+
 	x509Cert, err := x509.ParseCertificate(rawCert)
-	if err != nil {
-		t.Fatalf("parsing cert: %v", err)
-	}
+	require.NoError(t, err, "Failed to parse cert")
+
 	cert := tls.Certificate{
 		Certificate: [][]byte{rawCert},
 		PrivateKey:  priv,
@@ -271,9 +242,8 @@ func TestTLS13(t *testing.T) {
 	}
 
 	srv, err := tls.Listen("tcp", "127.0.0.1:0", srvConf)
-	if err != nil {
-		t.Fatalf("creating tls listener: %v", err)
-	}
+	require.NoError(t, err, "Failed to create TLS listener")
+
 	defer srv.Close()
 
 	errCh := make(chan error, 2)
@@ -321,8 +291,6 @@ func TestTLS13(t *testing.T) {
 	}()
 
 	for i := 0; i < 2; i++ {
-		if err := <-errCh; err != nil {
-			t.Fatalf("%v", err)
-		}
+		require.NoError(t, <-errCh)
 	}
 }

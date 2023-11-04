@@ -9,17 +9,17 @@ import (
 	"testing"
 
 	"github.com/ebfe/scard"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func runContextTest(t *testing.T, f func(t *testing.T, c *scard.Context)) {
 	ctx, err := scard.EstablishContext()
-	if err != nil {
-		t.Fatalf("creating context: %v", err)
-	}
+	require.NoError(t, err, "Failed to create context")
+
 	defer func() {
-		if err := ctx.Release(); err != nil {
-			t.Errorf("closing context: %v", err)
-		}
+		err := ctx.Release()
+		assert.NoError(t, err, "Failed to close context")
 	}()
 	f(t, ctx)
 }
@@ -27,9 +27,12 @@ func runContextTest(t *testing.T, f func(t *testing.T, c *scard.Context)) {
 func runHandleTest(t *testing.T, f func(t *testing.T, h *scard.Card)) {
 	runContextTest(t, func(t *testing.T, c *scard.Context) {
 		readers, err := c.ListReaders()
-		if err != nil && !errors.Is(err, scard.ErrNoReadersAvailable) {
-			t.Fatalf("listing smart card readers: %v", err)
+		if errors.Is(err, scard.ErrNoReadersAvailable) {
+			err = nil // We ignore missing reader here
 		}
+
+		require.NoError(t, err, "Failed to list readers")
+
 		reader := ""
 		for _, r := range readers {
 			if strings.Contains(strings.ToLower(r), "yubikey") {
@@ -41,13 +44,11 @@ func runHandleTest(t *testing.T, f func(t *testing.T, h *scard.Card)) {
 			t.Skip("could not find YubiKey, skipping testing")
 		}
 		h, err := c.Connect(reader, scard.ShareExclusive, scard.ProtocolT1)
-		if err != nil {
-			t.Fatalf("connecting to %s: %v", reader, err)
-		}
+		require.NoError(t, err, "Failed to connect to %s: %v", reader, err)
+
 		defer func() {
-			if err := h.Disconnect(scard.LeaveCard); err != nil {
-				t.Errorf("disconnecting from handle: %v", err)
-			}
+			err := h.Disconnect(scard.LeaveCard)
+			assert.NoError(t, err, "Failed to disconnect from handle")
 		}()
 		f(t, h)
 	})
@@ -60,12 +61,10 @@ func TestHandle(t *testing.T) {
 func TestTransaction(t *testing.T) {
 	runHandleTest(t, func(t *testing.T, h *scard.Card) {
 		tx, err := newTx(h)
-		if err != nil {
-			t.Fatalf("beginning transaction: %v", err)
-		}
-		if err := tx.Close(); err != nil {
-			t.Fatalf("closing transaction: %v", err)
-		}
+		require.NoError(t, err, "Failed to begin transaction")
+
+		err = tx.Close()
+		require.NoError(t, err, "Failed to close transaction")
 	})
 }
 
@@ -88,29 +87,26 @@ func TestErrors(t *testing.T) {
 		{0x6a, 0x82, true, false, 0, "data object or application not found"},
 	}
 
-	for _, tc := range tests {
-		err := &apduError{tc.sw1, tc.sw2}
-		if errors.Is(err, ErrNotFound) != tc.isErrNotFound {
+	for _, test := range tests {
+		err := &apduError{test.sw1, test.sw2}
+		if errors.Is(err, ErrNotFound) != test.isErrNotFound {
 			var s string
-			if !tc.isErrNotFound {
+			if !test.isErrNotFound {
 				s = " not"
 			}
-			t.Errorf("%q should%s be ErrNotFound", tc.desc, s)
+			t.Errorf("%q should %s be ErrNotFound", test.desc, s)
 		}
 
 		var authErr AuthError
-		if errors.As(err, &authErr) != tc.isAuthErr {
+		if errors.As(err, &authErr) != test.isAuthErr {
 			var s string
-			if !tc.isAuthErr {
+			if !test.isAuthErr {
 				s = " not"
 			}
-			t.Errorf("%q should%s be AuthErr", tc.desc, s)
+			t.Errorf("%q should %s be AuthErr", test.desc, s)
 		}
-		if authErr.Retries != tc.retries {
-			t.Errorf("%q retries should be %d, got %d", tc.desc, tc.retries, authErr.Retries)
-		}
-		if !strings.Contains(err.Error(), tc.desc) {
-			t.Errorf("Error %v should contain text %v", err, tc.desc)
-		}
+
+		assert.Equal(t, authErr.Retries, test.retries)
+		assert.ErrorContains(t, err, test.desc)
 	}
 }

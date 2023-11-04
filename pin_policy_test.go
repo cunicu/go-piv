@@ -3,7 +3,11 @@
 
 package piv
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 // TestDerivePINPolicy checks that YubiKeys with version >= 5.3.0 use the
 // KeyInfo method to determine the pin policy, instead of the attestation
@@ -15,9 +19,8 @@ func TestPINPolicy(t *testing.T) {
 
 		testRequiresVersion(t, c, 5, 3, 0)
 
-		if err := c.Reset(); err != nil {
-			t.Fatalf("resetting key: %v", err)
-		}
+		err := c.Reset()
+		require.NoError(t, err, "Failed to reset applet")
 	}()
 
 	c, closeCard := newTestCard(t)
@@ -26,14 +29,15 @@ func TestPINPolicy(t *testing.T) {
 	// for imported keys, using the attestation certificate to derive the PIN
 	// policy fails. So we check that pinPolicy succeeds with imported keys.
 	priv := ephemeralKey(t, AlgorithmEC256)
-	if err := c.SetPrivateKeyInsecure(DefaultManagementKey, SlotAuthentication, priv, Key{
+
+	err := c.SetPrivateKeyInsecure(DefaultManagementKey, SlotAuthentication, priv, Key{
 		Algorithm:   AlgorithmEC256,
 		PINPolicy:   PINPolicyNever,
 		TouchPolicy: TouchPolicyNever,
-	}); err != nil {
-		t.Fatalf("import key: %v", err)
-	}
-	if got, err := pinPolicy(c, SlotAuthentication); err != nil || got != PINPolicyNever {
-		t.Fatalf("pinPolicy() = %v, %v, want %v, <nil>", got, err, PINPolicyNever)
-	}
+	})
+	require.NoError(t, err, "Failed to import key")
+
+	got, err := pinPolicy(c, SlotAuthentication)
+	require.NoError(t, err)
+	require.Equal(t, PINPolicyNever, got)
 }

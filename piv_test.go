@@ -5,7 +5,6 @@ package piv
 
 import (
 	"crypto/rand"
-	"errors"
 	"flag"
 	"io"
 	"math/bits"
@@ -13,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/ebfe/scard"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // canModifyCard indicates whether the test running has constented to
@@ -24,16 +25,15 @@ var canModifyCard = flag.Bool("reset-card", false,
 
 func testGetVersion(t *testing.T, h *scard.Card) {
 	tx, err := newTx(h)
-	if err != nil {
-		t.Fatalf("new transaction: %v", err)
-	}
+	require.NoError(t, err, "Failed to begin new transaction")
+
 	defer tx.Close()
-	if err := selectApplication(tx, aidPIV[:]); err != nil {
-		t.Fatalf("selecting application: %v", err)
-	}
-	if _, err := getVersion(tx); err != nil {
-		t.Fatalf("listing version: %v", err)
-	}
+
+	err = selectApplication(tx, aidPIV[:])
+	require.NoError(t, err, "Failed to select application")
+
+	_, err = getVersion(tx)
+	require.NoError(t, err, "Failed to list version")
 }
 
 //nolint:unparam
@@ -44,19 +44,19 @@ func testRequiresVersion(t *testing.T, c *Card, major, minor, patch int) {
 	}
 }
 
-func TestGetVersion(t *testing.T) { runHandleTest(t, testGetVersion) }
+func TestGetVersion(t *testing.T) {
+	runHandleTest(t, testGetVersion)
+}
 
 func TestCards(t *testing.T) {
-	if _, err := Cards(); err != nil {
-		t.Fatalf("listing cards: %v", err)
-	}
+	_, err := Cards()
+	require.NoError(t, err, "Failed to list cards")
 }
 
 func newTestCard(t *testing.T) (*Card, func()) {
 	cards, err := Cards()
-	if err != nil {
-		t.Fatalf("listing cards: %v", err)
-	}
+	require.NoError(t, err, "Failed to list cards")
+
 	for _, card := range cards {
 		if !strings.Contains(strings.ToLower(card), "yubikey") {
 			continue
@@ -65,13 +65,11 @@ func newTestCard(t *testing.T) (*Card, func()) {
 			t.Skip("not running test that accesses card, provide --reset-card flag")
 		}
 		c, err := Open(card)
-		if err != nil {
-			t.Fatalf("getting new card: %v", err)
-		}
+		require.NoError(t, err, "Failed to get new card")
+
 		return c, func() {
-			if err := c.Close(); err != nil {
-				t.Errorf("closing card: %v", err)
-			}
+			err := c.Close()
+			assert.NoError(t, err, "Failed to close card")
 		}
 	}
 	t.Skip("no YubiKeys detected, skipping")
@@ -85,39 +83,35 @@ func TestNewCard(t *testing.T) {
 
 func TestMultipleConnections(t *testing.T) {
 	cards, err := Cards()
-	if err != nil {
-		t.Fatalf("listing cards: %v", err)
+	require.NoError(t, err, "Failed to list cards")
+
+	if !*canModifyCard {
+		t.Skip("not running test that accesses card, provide --reset-card flag")
 	}
+
 	for _, card := range cards {
 		if !strings.Contains(strings.ToLower(card), "yubikey") {
 			continue
 		}
-		if !*canModifyCard {
-			t.Skip("not running test that accesses card, provide --reset-card flag")
-		}
+
 		c, err := Open(card)
-		if err != nil {
-			t.Fatalf("getting new card: %v", err)
-		}
+		require.NoError(t, err, "Failed to get new card")
+
 		defer func() {
-			if err := c.Close(); err != nil {
-				t.Errorf("closing card: %v", err)
-			}
+			err := c.Close()
+			require.NoError(t, err, "Failed to close card")
 		}()
 
-		_, oerr := Open(card)
-		if oerr == nil {
-			t.Fatalf("expected second open operation to fail")
-		}
-		var e scard.Error
-		if !errors.As(oerr, &e) {
-			t.Fatalf("expected scard.Error, got %T", oerr)
-		}
-		if !errors.Is(e, scard.ErrSharingViolation) {
-			t.Fatalf("expected return code 0x8010000B (sharing vialation), got=0x%x", e)
-		}
+		_, err = Open(card)
+		require.Error(t, err, "Expected second open operation to fail")
+
+		var serr scard.Error
+		require.ErrorAs(t, err, &serr, "Expected scard.Error, got %T", err)
+		require.ErrorIs(t, serr, scard.ErrSharingViolation, "Expected return code 0x8010000B (sharing vialation), got=0x%x", serr)
+
 		return
 	}
+
 	t.Skip("no YubiKey detected, skipping")
 }
 
@@ -125,9 +119,8 @@ func TestSerial(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if _, err := c.Serial(); err != nil {
-		t.Fatalf("getting serial number: %v", err)
-	}
+	_, err := c.Serial()
+	require.NoError(t, err, "Failed to get serial number")
 }
 
 func TestLoginNeeded(t *testing.T) {
@@ -136,27 +129,24 @@ func TestLoginNeeded(t *testing.T) {
 
 	testRequiresVersion(t, c, 4, 3, 0)
 
-	if !loginNeeded(c.tx) {
-		t.Errorf("expected login needed")
-	}
-	if err := login(c.tx, DefaultPIN); err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	if loginNeeded(c.tx) {
-		t.Errorf("expected no login needed")
-	}
+	assert.True(t, loginNeeded(c.tx), "Expected login needed")
+
+	err := login(c.tx, DefaultPIN)
+	require.NoError(t, err, "Failed to login")
+
+	needed := loginNeeded(c.tx)
+	require.False(t, needed, "Expected no login needed")
 }
 
 func TestPINRetries(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
+
 	retries, err := c.Retries()
-	if err != nil {
-		t.Fatalf("getting retries: %v", err)
-	}
-	if retries < 0 || retries > 15 {
-		t.Fatalf("invalid number of retries: %d", retries)
-	}
+	require.NoError(t, err, "Failed to get retries")
+
+	require.Less(t, retries, 15, "Invalid number of retries: %d", retries)
+	require.LessOrEqual(t, 0, retries, "Invalid number of retries: %d", retries)
 }
 
 func TestReset(t *testing.T) {
@@ -165,30 +155,28 @@ func TestReset(t *testing.T) {
 	}
 	c, closeCard := newTestCard(t)
 	defer closeCard()
-	if err := c.Reset(); err != nil {
-		t.Fatalf("resetting card: %v", err)
-	}
-	if err := c.VerifyPIN(DefaultPIN); err != nil {
-		t.Fatalf("login: %v", err)
-	}
+
+	err := c.Reset()
+	require.NoError(t, err, "Failed to reset card")
+
+	err = c.VerifyPIN(DefaultPIN)
+	require.NoError(t, err, "Failed to verify PIN")
 }
 
 func TestLogin(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if err := c.VerifyPIN(DefaultPIN); err != nil {
-		t.Fatalf("login: %v", err)
-	}
+	err := c.VerifyPIN(DefaultPIN)
+	require.NoError(t, err, "Failed to login")
 }
 
 func TestAuthenticate(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if err := c.authManagementKey(DefaultManagementKey); err != nil {
-		t.Errorf("authenticating: %v", err)
-	}
+	err := c.authManagementKey(DefaultManagementKey)
+	assert.NoError(t, err, "Failed to authenticate")
 }
 
 func TestSetManagementKey(t *testing.T) {
@@ -196,19 +184,17 @@ func TestSetManagementKey(t *testing.T) {
 	defer closeCard()
 
 	var mgmtKey [24]byte
-	if _, err := io.ReadFull(rand.Reader, mgmtKey[:]); err != nil {
-		t.Fatalf("generating management key: %v", err)
-	}
+	_, err := io.ReadFull(rand.Reader, mgmtKey[:])
+	require.NoError(t, err, "Failed to generate management key")
 
-	if err := c.SetManagementKey(DefaultManagementKey, mgmtKey); err != nil {
-		t.Fatalf("setting management key: %v", err)
-	}
-	if err := c.authManagementKey(mgmtKey); err != nil {
-		t.Errorf("authenticating with new management key: %v", err)
-	}
-	if err := c.SetManagementKey(mgmtKey, DefaultManagementKey); err != nil {
-		t.Fatalf("resetting management key: %v", err)
-	}
+	err = c.SetManagementKey(DefaultManagementKey, mgmtKey)
+	require.NoError(t, err, "Failed to set management key")
+
+	err = c.authManagementKey(mgmtKey)
+	assert.NoError(t, err, "Failed to authenticate with new management key")
+
+	err = c.SetManagementKey(mgmtKey, DefaultManagementKey)
+	require.NoError(t, err, "Failed to reset management key")
 }
 
 func TestUnblockPIN(t *testing.T) {
@@ -218,24 +204,21 @@ func TestUnblockPIN(t *testing.T) {
 	badPIN := "0"
 	for {
 		err := login(c.tx, badPIN)
-		if err == nil {
-			t.Fatalf("login with bad pin succeeded")
-		}
+		require.Error(t, err, "Login with bad pin succeeded")
+
 		var e AuthError
-		if !errors.As(err, &e) {
-			t.Fatalf("error returned was not a wrong pin error: %v", err)
-		}
+		require.ErrorAs(t, err, &e, "Error returned was not a wrong pin error")
+
 		if e.Retries == 0 {
 			break
 		}
 	}
 
-	if err := c.Unblock(DefaultPUK, DefaultPIN); err != nil {
-		t.Fatalf("unblocking pin: %v", err)
-	}
-	if err := login(c.tx, DefaultPIN); err != nil {
-		t.Errorf("failed to login with pin after unblock: %v", err)
-	}
+	err := c.Unblock(DefaultPUK, DefaultPIN)
+	require.NoError(t, err, "Failed to unblock PIN")
+
+	err = login(c.tx, DefaultPIN)
+	assert.NoError(t, err, "Failed to login with pin after unblock")
 }
 
 func TestChangePIN(t *testing.T) {
@@ -243,15 +226,15 @@ func TestChangePIN(t *testing.T) {
 	defer closeCard()
 
 	newPIN := "654321"
-	if err := c.SetPIN(newPIN, newPIN); err == nil {
-		t.Errorf("successfully changed pin with invalid pin, expected error")
-	}
-	if err := c.SetPIN(DefaultPIN, newPIN); err != nil {
-		t.Fatalf("changing pin: %v", err)
-	}
-	if err := c.SetPIN(newPIN, DefaultPIN); err != nil {
-		t.Fatalf("resetting pin: %v", err)
-	}
+
+	err := c.SetPIN(newPIN, newPIN)
+	assert.Error(t, err, "Successfully changed pin with invalid pin, expected error")
+
+	err = c.SetPIN(DefaultPIN, newPIN)
+	require.NoError(t, err, "Failed to change PIN")
+
+	err = c.SetPIN(newPIN, DefaultPIN)
+	require.NoError(t, err, "Failed to reset PIN")
 }
 
 func TestChangePUK(t *testing.T) {
@@ -259,15 +242,15 @@ func TestChangePUK(t *testing.T) {
 	defer closeCard()
 
 	newPUK := "87654321"
-	if err := c.SetPUK(newPUK, newPUK); err == nil {
-		t.Errorf("successfully changed puk with invalid puk, expected error")
-	}
-	if err := c.SetPUK(DefaultPUK, newPUK); err != nil {
-		t.Fatalf("changing puk: %v", err)
-	}
-	if err := c.SetPUK(newPUK, DefaultPUK); err != nil {
-		t.Fatalf("resetting puk: %v", err)
-	}
+
+	err := c.SetPUK(newPUK, newPUK)
+	assert.Error(t, err, "Successfully changed puk with invalid puk, expected error")
+
+	err = c.SetPUK(DefaultPUK, newPUK)
+	require.NoError(t, err, "Failed to changing PUK")
+
+	err = c.SetPUK(newPUK, DefaultPUK)
+	require.NoError(t, err, "Failed to reset PUK")
 }
 
 func TestChangeManagementKey(t *testing.T) {
@@ -275,22 +258,22 @@ func TestChangeManagementKey(t *testing.T) {
 	defer closeCard()
 
 	var newKey [24]byte
-	if _, err := io.ReadFull(rand.Reader, newKey[:]); err != nil {
-		t.Fatalf("generating new management key: %v", err)
-	}
+	_, err := io.ReadFull(rand.Reader, newKey[:])
+	require.NoError(t, err, "Failed to generate new management key")
+
 	// Apply odd-parity
 	for i, b := range newKey {
 		if bits.OnesCount8(b)%2 == 0 {
 			newKey[i] = b ^ 1 // flip least significant bit
 		}
 	}
-	if err := c.SetManagementKey(newKey, newKey); err == nil {
-		t.Errorf("successfully changed management key with invalid key, expected error")
-	}
-	if err := c.SetManagementKey(DefaultManagementKey, newKey); err != nil {
-		t.Fatalf("changing management key: %v", err)
-	}
-	if err := c.SetManagementKey(newKey, DefaultManagementKey); err != nil {
-		t.Fatalf("resetting management key: %v", err)
-	}
+
+	err = c.SetManagementKey(newKey, newKey)
+	assert.Error(t, err, "Successfully changed management key with invalid key, expected error")
+
+	err = c.SetManagementKey(DefaultManagementKey, newKey)
+	require.NoError(t, err, "Failed to change management key")
+
+	err = c.SetManagementKey(newKey, DefaultManagementKey)
+	require.NoError(t, err, "Failed to reset management key")
 }

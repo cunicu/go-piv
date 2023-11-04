@@ -4,8 +4,10 @@
 package piv
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKeyInfo(t *testing.T) {
@@ -15,9 +17,8 @@ func TestKeyInfo(t *testing.T) {
 
 		testRequiresVersion(t, c, 5, 3, 0)
 
-		if err := c.Reset(); err != nil {
-			t.Fatalf("resetting key: %v", err)
-		}
+		err := c.Reset()
+		require.NoError(t, err, "Failed to reset applet")
 	}()
 
 	tests := []struct {
@@ -130,26 +131,21 @@ func TestKeyInfo(t *testing.T) {
 
 			if test.importKey == nil {
 				pub, err := c.GenerateKey(DefaultManagementKey, test.slot, test.policy)
-				if err != nil {
-					t.Fatalf("generating key: %v", err)
-				}
+				require.NoError(t, err, "Failed to generate key")
+
 				want.Origin = OriginGenerated
 				want.PublicKey = pub
 			} else {
-				if err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, test.importKey, test.policy); err != nil {
-					t.Fatalf("importing key: %v", err)
-				}
+				err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, test.importKey, test.policy)
+				require.NoError(t, err, "importing key")
+
 				want.Origin = OriginImported
 				want.PublicKey = test.importKey.Public()
 			}
 
 			got, err := c.KeyInfo(test.slot)
-			if err != nil {
-				t.Fatalf("KeyInfo() = _, %v", err)
-			}
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("KeyInfo() = %#v, want %#v", got, want)
-			}
+			require.NoError(t, err, "Failed to KeyInfo()")
+			assert.Equal(t, want, got, "KeyInfo() = %#v, want %#v", got, want)
 		})
 	}
 }

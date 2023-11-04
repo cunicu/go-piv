@@ -6,7 +6,7 @@ package piv
 //nolint:gochecknoglobals
 var (
 	algorithmsMap = map[Algorithm]byte{
-		AlgorithmEC256:   algECCP256,
+		AlgorithmEC256:   algECS256,
 		AlgorithmEC384:   algECCP384,
 		AlgorithmEd25519: algEd25519,
 		AlgorithmRSA1024: algRSA1024,
@@ -14,7 +14,7 @@ var (
 	}
 
 	algorithmsMapInv = map[byte]Algorithm{
-		algECCP256: AlgorithmEC256,
+		algECS256:  AlgorithmEC256,
 		algECCP384: AlgorithmEC384,
 		algEd25519: AlgorithmEd25519,
 		algRSA1024: AlgorithmRSA1024,
