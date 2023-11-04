@@ -294,17 +294,17 @@ Non-YubiKey smart cards that implement the PIV standard are not officially suppo
 ## Testing
 
 Tests automatically find connected available YubiKeys, but won't modify the
-smart card without the `--reset-yubikey` flag. To let the tests modify your
+smart card without the `--reset-card` flag. To let the tests modify your
 YubiKey's PIV applet, run:
 
 ```shell
-go test -v ./piv --reset-yubikey
+go test -v ./piv --reset-card
 ```
 
 Longer tests can be skipped with the `--test.short` flag.
 
 ```shell
-go test -v --short ./piv --reset-yubikey
+go test -v --short ./piv --reset-card
 ```
 
 ## Why?

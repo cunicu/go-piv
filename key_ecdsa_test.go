@@ -158,7 +158,7 @@ func TestSignECDSA(t *testing.T) {
 	defer closeCard()
 
 	if err := c.Reset(); err != nil {
-		t.Fatalf("reset yubikey: %v", err)
+		t.Fatalf("reset card: %v", err)
 	}
 
 	slot := SlotAuthentication
