@@ -78,14 +78,14 @@ func (ki *KeyInfo) unmarshal(b []byte) error {
 
 // KeyInfo returns public information about the given key slot. It is only
 // supported by YubiKeys with a version >= 5.3.0.
-func (yk *YubiKey) KeyInfo(slot Slot) (KeyInfo, error) {
+func (c *Card) KeyInfo(slot Slot) (KeyInfo, error) {
 	// https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html#_get_metadata
 	cmd := apdu{
 		instruction: insGetMetadata,
 		param1:      0x00,
 		param2:      byte(slot.Key),
 	}
-	resp, err := yk.tx.Transmit(cmd)
+	resp, err := c.tx.Transmit(cmd)
 	if err != nil {
 		return KeyInfo{}, fmt.Errorf("failed to execute command: %w", err)
 	}

@@ -52,13 +52,13 @@ func (c *client) Cards() ([]string, error) {
 	return readers, err
 }
 
-func (c *client) Open(card string) (*YubiKey, error) {
+func (c *client) Open(cardName string) (*Card, error) {
 	ctx, err := scard.EstablishContext()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to smart card daemon: %w", err)
 	}
 
-	h, err := ctx.Connect(card, scard.ShareExclusive, scard.ProtocolT1)
+	h, err := ctx.Connect(cardName, scard.ShareExclusive, scard.ProtocolT1)
 	if err != nil {
 		if err := ctx.Release(); err != nil {
 			return nil, fmt.Errorf("failed to release context: %w", err)
@@ -70,22 +70,22 @@ func (c *client) Open(card string) (*YubiKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin smart card transaction: %w", err)
 	}
-	if err := ykSelectApplication(tx, aidPIV[:]); err != nil {
+	if err := selectApplication(tx, aidPIV[:]); err != nil {
 		tx.Close()
 		return nil, fmt.Errorf("failed to select PIV applet: %w", err)
 	}
 
-	yk := &YubiKey{ctx: ctx, h: h, tx: tx}
-	v, err := ykVersion(yk.tx)
+	card := &Card{ctx: ctx, h: h, tx: tx}
+	v, err := getVersion(card.tx)
 	if err != nil {
-		yk.Close()
+		card.Close()
 		return nil, fmt.Errorf("failed to get YubiKey version: %w", err)
 	}
-	yk.version = v
+	card.version = v
 	if c.Rand != nil {
-		yk.rand = c.Rand
+		card.rand = c.Rand
 	} else {
-		yk.rand = rand.Reader
+		card.rand = rand.Reader
 	}
-	return yk, nil
+	return card, nil
 }

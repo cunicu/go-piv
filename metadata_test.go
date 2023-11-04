@@ -14,17 +14,17 @@ func TestMetadata(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 	func() {
-		yk, closeCard := newTestYubiKey(t)
+		c, closeCard := newTestCard(t)
 		defer closeCard()
-		if err := yk.Reset(); err != nil {
+		if err := c.Reset(); err != nil {
 			t.Fatalf("resetting yubikey: %v", err)
 		}
 	}()
 
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if m, err := yk.Metadata(DefaultPIN); err != nil {
+	if m, err := c.Metadata(DefaultPIN); err != nil {
 		t.Errorf("getting metadata: %v", err)
 	} else if m.ManagementKey != nil {
 		t.Errorf("expected no management key set")
@@ -38,10 +38,10 @@ func TestMetadata(t *testing.T) {
 	m := &Metadata{
 		ManagementKey: &wantKey,
 	}
-	if err := yk.SetMetadata(DefaultManagementKey, m); err != nil {
+	if err := c.SetMetadata(DefaultManagementKey, m); err != nil {
 		t.Fatalf("setting metadata: %v", err)
 	}
-	got, err := yk.Metadata(DefaultPIN)
+	got, err := c.Metadata(DefaultPIN)
 	if err != nil {
 		t.Fatalf("getting metadata: %v", err)
 	}

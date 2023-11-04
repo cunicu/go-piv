@@ -39,7 +39,7 @@ func TestPINPrompt(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 
 			k := Key{
@@ -47,7 +47,7 @@ func TestPINPrompt(t *testing.T) {
 				PINPolicy:   test.policy,
 				TouchPolicy: TouchPolicyNever,
 			}
-			pub, err := yk.GenerateKey(DefaultManagementKey, SlotAuthentication, k)
+			pub, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, k)
 			if err != nil {
 				t.Fatalf("generating key on slot: %v", err)
 			}
@@ -59,11 +59,11 @@ func TestPINPrompt(t *testing.T) {
 				},
 			}
 
-			if !supportsAttestation(yk) {
+			if !supportsAttestation(c) {
 				auth.PINPolicy = test.policy
 			}
 
-			priv, err := yk.PrivateKey(SlotAuthentication, pub, auth)
+			priv, err := c.PrivateKey(SlotAuthentication, pub, auth)
 			if err != nil {
 				t.Fatalf("building private key: %v", err)
 			}
@@ -99,7 +99,7 @@ func TestYubiKeyDecryptRSA(t *testing.T) {
 			if test.long && testing.Short() {
 				t.Skip("skipping test in short mode")
 			}
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 			slot := SlotAuthentication
 			key := Key{
@@ -107,7 +107,7 @@ func TestYubiKeyDecryptRSA(t *testing.T) {
 				TouchPolicy: TouchPolicyNever,
 				PINPolicy:   PINPolicyNever,
 			}
-			pubKey, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+			pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
 			if err != nil {
 				t.Fatalf("generating key: %v", err)
 			}
@@ -122,7 +122,7 @@ func TestYubiKeyDecryptRSA(t *testing.T) {
 				t.Fatalf("encryption failed: %v", err)
 			}
 
-			priv, err := yk.PrivateKey(slot, pub, KeyAuth{})
+			priv, err := c.PrivateKey(slot, pub, KeyAuth{})
 			if err != nil {
 				t.Fatalf("getting private key: %v", err)
 			}
@@ -142,7 +142,7 @@ func TestYubiKeyDecryptRSA(t *testing.T) {
 }
 
 func TestYubiKeyStoreCertificate(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 	slot := SlotAuthentication
 
@@ -176,7 +176,7 @@ func TestYubiKeyStoreCertificate(t *testing.T) {
 		TouchPolicy: TouchPolicyNever,
 		PINPolicy:   PINPolicyNever,
 	}
-	pub, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
 	if err != nil {
 		t.Fatalf("generating key: %v", err)
 	}
@@ -197,10 +197,10 @@ func TestYubiKeyStoreCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parsing cli cert: %v", err)
 	}
-	if err := yk.SetCertificate(DefaultManagementKey, slot, cliCert); err != nil {
+	if err := c.SetCertificate(DefaultManagementKey, slot, cliCert); err != nil {
 		t.Fatalf("storing client cert: %v", err)
 	}
-	gotCert, err := yk.Certificate(slot)
+	gotCert, err := c.Certificate(slot)
 	if err != nil {
 		t.Fatalf("getting client cert: %v", err)
 	}
@@ -239,10 +239,10 @@ func TestYubiKeyGenerateKey(t *testing.T) {
 			if test.long && testing.Short() {
 				t.Skip("skipping test in short mode")
 			}
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 			if test.alg == AlgorithmEC384 {
-				testRequiresVersion(t, yk, 4, 3, 0)
+				testRequiresVersion(t, c, 4, 3, 0)
 			}
 
 			key := Key{
@@ -250,7 +250,7 @@ func TestYubiKeyGenerateKey(t *testing.T) {
 				TouchPolicy: TouchPolicyNever,
 				PINPolicy:   PINPolicyNever,
 			}
-			if _, err := yk.GenerateKey(DefaultManagementKey, SlotAuthentication, key); err != nil {
+			if _, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, key); err != nil {
 				t.Errorf("generating key: %v", err)
 			}
 		})
@@ -261,7 +261,7 @@ func TestYubiKeyPrivateKey(t *testing.T) {
 	alg := AlgorithmEC256
 	slot := SlotAuthentication
 
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	key := Key{
@@ -269,7 +269,7 @@ func TestYubiKeyPrivateKey(t *testing.T) {
 		TouchPolicy: TouchPolicyNever,
 		PINPolicy:   PINPolicyNever,
 	}
-	pub, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
 	if err != nil {
 		t.Fatalf("generating key: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestYubiKeyPrivateKey(t *testing.T) {
 	}
 
 	auth := KeyAuth{PIN: DefaultPIN}
-	priv, err := yk.PrivateKey(slot, pub, auth)
+	priv, err := c.PrivateKey(slot, pub, auth)
 	if err != nil {
 		t.Fatalf("getting private key: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestYubiKeyPrivateKeyPINError(t *testing.T) {
 	alg := AlgorithmEC256
 	slot := SlotAuthentication
 
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	key := Key{
@@ -318,7 +318,7 @@ func TestYubiKeyPrivateKeyPINError(t *testing.T) {
 		TouchPolicy: TouchPolicyNever,
 		PINPolicy:   PINPolicyAlways,
 	}
-	pub, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
 	if err != nil {
 		t.Fatalf("generating key: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestYubiKeyPrivateKeyPINError(t *testing.T) {
 		},
 	}
 
-	priv, err := yk.PrivateKey(slot, pub, auth)
+	priv, err := c.PrivateKey(slot, pub, auth)
 	if err != nil {
 		t.Fatalf("getting private key: %v", err)
 	}

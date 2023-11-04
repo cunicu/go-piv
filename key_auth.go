@@ -24,7 +24,7 @@ type KeyAuth struct {
 	PINPolicy PINPolicy
 }
 
-func (k KeyAuth) authTx(yk *YubiKey, pp PINPolicy) error {
+func (k KeyAuth) authTx(c *Card, pp PINPolicy) error {
 	// PINPolicyNever shouldn't require a PIN.
 	if pp == PINPolicyNever {
 		return nil
@@ -33,7 +33,7 @@ func (k KeyAuth) authTx(yk *YubiKey, pp PINPolicy) error {
 	// PINPolicyAlways should always prompt a PIN even if the key says that
 	// login isn't needed.
 	// https://cunicu.li/go-piv/issues/49
-	if pp != PINPolicyAlways && !ykLoginNeeded(yk.tx) {
+	if pp != PINPolicyAlways && !loginNeeded(c.tx) {
 		return nil
 	}
 
@@ -48,12 +48,12 @@ func (k KeyAuth) authTx(yk *YubiKey, pp PINPolicy) error {
 	if pin == "" {
 		return errMissingPIN
 	}
-	return ykLogin(yk.tx, pin)
+	return login(c.tx, pin)
 }
 
-func (k KeyAuth) do(yk *YubiKey, pp PINPolicy, f func(tx *scTx) ([]byte, error)) ([]byte, error) {
-	if err := k.authTx(yk, pp); err != nil {
+func (k KeyAuth) do(c *Card, pp PINPolicy, f func(tx *scTx) ([]byte, error)) ([]byte, error) {
+	if err := k.authTx(c, pp); err != nil {
 		return nil, err
 	}
-	return f(yk.tx)
+	return f(c.tx)
 }

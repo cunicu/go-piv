@@ -12,7 +12,7 @@ import (
 //
 // If a certificate hasn't been set in the provided slot, the returned error
 // wraps ErrNotFound.
-func (yk *YubiKey) Certificate(slot Slot) (*x509.Certificate, error) {
+func (c *Card) Certificate(slot Slot) (*x509.Certificate, error) {
 	cmd := apdu{
 		instruction: insGetData,
 		param1:      0x3f,
@@ -25,7 +25,7 @@ func (yk *YubiKey) Certificate(slot Slot) (*x509.Certificate, error) {
 			byte(slot.Object),
 		},
 	}
-	resp, err := yk.tx.Transmit(cmd)
+	resp, err := c.tx.Transmit(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
@@ -48,14 +48,14 @@ func (yk *YubiKey) Certificate(slot Slot) (*x509.Certificate, error) {
 // SetCertificate stores a certificate object in the provided slot. Setting a
 // certificate isn't required to use the associated key for signing or
 // decryption.
-func (yk *YubiKey) SetCertificate(key [24]byte, slot Slot, cert *x509.Certificate) error {
-	if err := ykAuthenticate(yk.tx, key, yk.rand); err != nil {
+func (c *Card) SetCertificate(key [24]byte, slot Slot, cert *x509.Certificate) error {
+	if err := authenticate(c.tx, key, c.rand); err != nil {
 		return fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
-	return ykStoreCertificate(yk.tx, slot, cert)
+	return storeCertificate(c.tx, slot, cert)
 }
 
-func ykStoreCertificate(tx *scTx, slot Slot, cert *x509.Certificate) error {
+func storeCertificate(tx *scTx, slot Slot, cert *x509.Certificate) error {
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=40
 	data := marshalASN1(0x70, cert.Raw)
 	// "for a certificate encoded in uncompressed form CertInfo shall be 0x00"

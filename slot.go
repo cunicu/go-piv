@@ -82,7 +82,7 @@ var retiredKeyManagementSlots = map[uint32]Slot{
 //	if !ok {
 //	    // unrecognized slot
 //	}
-//	pub, err := yk.GenerateKey(managementKey, slot, key)
+//	pub, err := c.GenerateKey(managementKey, slot, key)
 //
 // https://developers.yubico.com/PIV/Introduction/Certificate_slots.html#_slot_82_95_retired_key_management
 func RetiredKeyManagementSlot(key uint32) (Slot, bool) {

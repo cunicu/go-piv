@@ -19,7 +19,7 @@ import (
 // Keys returned by YubiKey.PrivateKey() may be type asserted to
 // *ECDSAPrivateKey, if the slot contains an ECDSA key.
 type ECDSAPrivateKey struct {
-	yk   *YubiKey
+	c    *Card
 	slot Slot
 	pub  *ecdsa.PublicKey
 	auth KeyAuth
@@ -35,8 +35,8 @@ var _ crypto.Signer = (*ECDSAPrivateKey)(nil)
 
 // Sign implements crypto.Signer.
 func (k *ECDSAPrivateKey) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
-	return k.auth.do(k.yk, k.pp, func(tx *scTx) ([]byte, error) {
-		return ykSignECDSA(tx, k.slot, k.pub, digest)
+	return k.auth.do(k.c, k.pp, func(tx *scTx) ([]byte, error) {
+		return signECDSA(tx, k.slot, k.pub, digest)
 	})
 }
 
@@ -54,7 +54,7 @@ func (k *ECDSAPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 		return nil, errMismatchingAlgorithms
 	}
 	msg := elliptic.Marshal(peer.Curve, peer.X, peer.Y)
-	return k.auth.do(k.yk, k.pp, func(tx *scTx) ([]byte, error) {
+	return k.auth.do(k.c, k.pp, func(tx *scTx) ([]byte, error) {
 		var alg byte
 		size := k.pub.Params().BitSize
 		switch size {
@@ -92,7 +92,7 @@ func (k *ECDSAPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 	})
 }
 
-func ykSignECDSA(tx *scTx, slot Slot, pub *ecdsa.PublicKey, digest []byte) ([]byte, error) {
+func signECDSA(tx *scTx, slot Slot, pub *ecdsa.PublicKey, digest []byte) ([]byte, error) {
 	var alg byte
 	size := pub.Params().BitSize
 	switch size {

@@ -17,7 +17,7 @@ import (
 )
 
 func TestYubiKeyECDSASharedKey(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	slot := SlotAuthentication
@@ -27,7 +27,7 @@ func TestYubiKeyECDSASharedKey(t *testing.T) {
 		TouchPolicy: TouchPolicyNever,
 		PINPolicy:   PINPolicyNever,
 	}
-	pubKey, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+	pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
 	if err != nil {
 		t.Fatalf("generating key: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestYubiKeyECDSASharedKey(t *testing.T) {
 	if !ok {
 		t.Fatalf("public key is not an ecdsa key")
 	}
-	priv, err := yk.PrivateKey(slot, pub, KeyAuth{})
+	priv, err := c.PrivateKey(slot, pub, KeyAuth{})
 	if err != nil {
 		t.Fatalf("getting private key: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 
 			generated, err := ecdsa.GenerateKey(tt.curve, rand.Reader)
@@ -118,7 +118,7 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 				t.Fatalf("generating private key: %v", err)
 			}
 
-			if err = yk.SetPrivateKeyInsecure(DefaultManagementKey, tt.slot, generated, Key{
+			if err = c.SetPrivateKeyInsecure(DefaultManagementKey, tt.slot, generated, Key{
 				PINPolicy:   PINPolicyNever,
 				TouchPolicy: TouchPolicyNever,
 			}); !errors.Is(err, tt.wantErr) {
@@ -128,7 +128,7 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 				return
 			}
 
-			priv, err := yk.PrivateKey(tt.slot, &generated.PublicKey, KeyAuth{})
+			priv, err := c.PrivateKey(tt.slot, &generated.PublicKey, KeyAuth{})
 			if err != nil {
 				t.Fatalf("getting private key: %v", err)
 			}
@@ -154,10 +154,10 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 }
 
 func TestYubiKeySignECDSA(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if err := yk.Reset(); err != nil {
+	if err := c.Reset(); err != nil {
 		t.Fatalf("reset yubikey: %v", err)
 	}
 
@@ -168,7 +168,7 @@ func TestYubiKeySignECDSA(t *testing.T) {
 		TouchPolicy: TouchPolicyNever,
 		PINPolicy:   PINPolicyNever,
 	}
-	pubKey, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+	pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
 	if err != nil {
 		t.Fatalf("generating key: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestYubiKeySignECDSA(t *testing.T) {
 		t.Fatalf("public key is not an ecdsa key")
 	}
 	data := sha256.Sum256([]byte("hello"))
-	priv, err := yk.PrivateKey(slot, pub, KeyAuth{})
+	priv, err := c.PrivateKey(slot, pub, KeyAuth{})
 	if err != nil {
 		t.Fatalf("getting private key: %v", err)
 	}

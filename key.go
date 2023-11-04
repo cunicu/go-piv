@@ -100,8 +100,8 @@ type Key struct {
 
 // GenerateKey generates an asymmetric key on the card, returning the key's
 // public key.
-func (yk *YubiKey) GenerateKey(key [24]byte, slot Slot, opts Key) (crypto.PublicKey, error) {
-	if err := ykAuthenticate(yk.tx, key, yk.rand); err != nil {
+func (c *Card) GenerateKey(key [24]byte, slot Slot, opts Key) (crypto.PublicKey, error) {
+	if err := authenticate(c.tx, key, c.rand); err != nil {
 		return nil, fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
 
@@ -129,7 +129,7 @@ func (yk *YubiKey) GenerateKey(key [24]byte, slot Slot, opts Key) (crypto.Public
 			tagTouchPolicy, 0x01, tp,
 		},
 	}
-	resp, err := yk.tx.Transmit(cmd)
+	resp, err := c.tx.Transmit(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
@@ -179,12 +179,12 @@ func decodePublic(b []byte, alg Algorithm) (crypto.PublicKey, error) {
 // If the public key hasn't been stored externally, it can be provided by
 // fetching the slot's attestation certificate:
 //
-//	cert, err := yk.Attest(slot)
+//	cert, err := c.Attest(slot)
 //	if err != nil {
 //		// ...
 //	}
-//	priv, err := yk.PrivateKey(slot, cert.PublicKey, auth)
-func (yk *YubiKey) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) (crypto.PrivateKey, error) {
+//	priv, err := c.PrivateKey(slot, cert.PublicKey, auth)
+func (c *Card) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) (crypto.PrivateKey, error) {
 	pp := PINPolicyNever
 	if _, ok := pinPolicyMap[auth.PINPolicy]; ok {
 		// If the PIN policy is manually specified, trust that value instead of
@@ -193,7 +193,7 @@ func (yk *YubiKey) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) 
 	} else if auth.PIN != "" || auth.PINPrompt != nil {
 		// Attempt to determine the key's PIN policy. This helps inform the
 		// strategy for when to prompt for a PIN.
-		policy, err := pinPolicy(yk, slot)
+		policy, err := pinPolicy(c, slot)
 		if err != nil {
 			return nil, err
 		}
@@ -202,11 +202,11 @@ func (yk *YubiKey) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) 
 
 	switch pub := public.(type) {
 	case *ecdsa.PublicKey:
-		return &ECDSAPrivateKey{yk, slot, pub, auth, pp}, nil
+		return &ECDSAPrivateKey{c, slot, pub, auth, pp}, nil
 	case ed25519.PublicKey:
-		return &keyEd25519{yk, slot, pub, auth, pp}, nil
+		return &keyEd25519{c, slot, pub, auth, pp}, nil
 	case *rsa.PublicKey:
-		return &keyRSA{yk, slot, pub, auth, pp}, nil
+		return &keyRSA{c, slot, pub, auth, pp}, nil
 	default:
 		return nil, fmt.Errorf("%w: %T", errUnsupportedKeyType, public)
 	}
@@ -222,7 +222,7 @@ func (yk *YubiKey) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) 
 // Keys generated outside of the YubiKey should not be considered hardware-backed,
 // as there's no way to prove the key wasn't copied, exfiltrated, or replaced with malicious
 // material before being imported.
-func (yk *YubiKey) SetPrivateKeyInsecure(key [24]byte, slot Slot, private crypto.PrivateKey, policy Key) error {
+func (c *Card) SetPrivateKeyInsecure(key [24]byte, slot Slot, private crypto.PrivateKey, policy Key) error {
 	// Reference implementation
 	// https://github.com/Yubico/yubico-piv-tool/blob/671a5740ef09d6c5d9d33f6e5575450750b58bde/lib/ykpiv.c#L1812
 
@@ -290,14 +290,14 @@ func (yk *YubiKey) SetPrivateKeyInsecure(key [24]byte, slot Slot, private crypto
 		tags = append(tags, param...)
 	}
 
-	if err := ykAuthenticate(yk.tx, key, yk.rand); err != nil {
+	if err := authenticate(c.tx, key, c.rand); err != nil {
 		return fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
 
-	return ykImportKey(yk.tx, tags, slot, policy)
+	return importKey(c.tx, tags, slot, policy)
 }
 
-func ykImportKey(tx *scTx, tags []byte, slot Slot, o Key) error {
+func importKey(tx *scTx, tags []byte, slot Slot, o Key) error {
 	alg, ok := algorithmsMap[o.Algorithm]
 	if !ok {
 		return errUnsupportedAlgorithm
