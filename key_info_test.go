@@ -10,12 +10,12 @@ import (
 
 func TestKeyInfo(t *testing.T) {
 	func() {
-		yk, closeCard := newTestYubiKey(t)
+		c, closeCard := newTestCard(t)
 		defer closeCard()
 
-		testRequiresVersion(t, yk, 5, 3, 0)
+		testRequiresVersion(t, c, 5, 3, 0)
 
-		if err := yk.Reset(); err != nil {
+		if err := c.Reset(); err != nil {
 			t.Fatalf("resetting key: %v", err)
 		}
 	}()
@@ -119,7 +119,7 @@ func TestKeyInfo(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 
 			want := KeyInfo{
@@ -129,21 +129,21 @@ func TestKeyInfo(t *testing.T) {
 			}
 
 			if test.importKey == nil {
-				pub, err := yk.GenerateKey(DefaultManagementKey, test.slot, test.policy)
+				pub, err := c.GenerateKey(DefaultManagementKey, test.slot, test.policy)
 				if err != nil {
 					t.Fatalf("generating key: %v", err)
 				}
 				want.Origin = OriginGenerated
 				want.PublicKey = pub
 			} else {
-				if err := yk.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, test.importKey, test.policy); err != nil {
+				if err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, test.importKey, test.policy); err != nil {
 					t.Fatalf("importing key: %v", err)
 				}
 				want.Origin = OriginImported
 				want.PublicKey = test.importKey.Public()
 			}
 
-			got, err := yk.KeyInfo(test.slot)
+			got, err := c.KeyInfo(test.slot)
 			if err != nil {
 				t.Fatalf("KeyInfo() = _, %v", err)
 			}

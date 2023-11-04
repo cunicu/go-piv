@@ -38,15 +38,15 @@ const (
 	PINPolicyAlways
 )
 
-func pinPolicy(yk *YubiKey, slot Slot) (PINPolicy, error) {
-	if supportsVersion(yk.Version(), 5, 3, 0) {
-		info, err := yk.KeyInfo(slot)
+func pinPolicy(c *Card, slot Slot) (PINPolicy, error) {
+	if supportsVersion(c.Version(), 5, 3, 0) {
+		info, err := c.KeyInfo(slot)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get key info: %w", err)
 		}
 		return info.PINPolicy, nil
 	}
-	cert, err := yk.Attest(slot)
+	cert, err := c.Attest(slot)
 	if err != nil {
 		var e *apduError
 		if errors.As(err, &e) && e.sw1 == 0x6d && e.sw2 == 0x00 {

@@ -53,17 +53,17 @@ if err != nil {
 }
 
 // Find a YubiKey and open the reader.
-var yk *piv.YubiKey
+var c *piv.Card
 for _, card := range cards {
     if strings.Contains(strings.ToLower(card), "yubikey") {
-        if yk, err = piv.Open(card); err != nil {
+        if c, err = piv.Open(card); err != nil {
             // ...
         }
         break
     }
 }
 
-if yk == nil {
+if c == nil {
     // ...
 }
 
@@ -74,13 +74,13 @@ key := piv.Key{
     TouchPolicy: piv.TouchPolicyAlways,
 }
 
-pub, err := yk.GenerateKey(piv.DefaultManagementKey, piv.SlotAuthentication, key)
+pub, err := c.GenerateKey(piv.DefaultManagementKey, piv.SlotAuthentication, key)
 if err != nil {
     // ...
 }
 
 auth := piv.KeyAuth{PIN: piv.DefaultPIN}
-priv, err := yk.PrivateKey(piv.SlotAuthentication, pub, auth)
+priv, err := c.PrivateKey(piv.SlotAuthentication, pub, auth)
 if err != nil {
     // ...
 }
@@ -123,21 +123,21 @@ newPIN := fmt.Sprintf("%06d", newPINInt)
 newPUK := fmt.Sprintf("%08d", newPUKInt)
 
 // Set all values to a new value.
-if err := yk.SetManagementKey(piv.DefaultManagementKey, newKey); err != nil {
+if err := c.SetManagementKey(piv.DefaultManagementKey, newKey); err != nil {
     // ...
 }
 
-if err := yk.SetPUK(piv.DefaultPUK, newPUK); err != nil {
+if err := c.SetPUK(piv.DefaultPUK, newPUK); err != nil {
     // ...
 }
 
-if err := yk.SetPIN(piv.DefaultPIN, newPIN); err != nil {
+if err := c.SetPIN(piv.DefaultPIN, newPIN); err != nil {
     // ...
 }
 
 // Store management key on the YubiKey.
 m := piv.Metadata{ManagementKey: &newKey}
-if err := yk.SetMetadata(newKey, m); err != nil {
+if err := c.SetMetadata(newKey, m); err != nil {
     // ...
 }
 
@@ -147,7 +147,7 @@ fmt.Println("Credentials set. Your PIN is: %s", newPIN)
 The user can use the PIN later to fetch the management key:
 
 ```go
-m, err := yk.Metadata(pin)
+m, err := c.Metadata(pin)
 if err != nil {
     // ...
 }
@@ -169,7 +169,7 @@ if err != nil {
     // ...
 }
 
-if err := yk.SetCertificate(managementKey, piv.SlotAuthentication, cert); err != nil {
+if err := c.SetCertificate(managementKey, piv.SlotAuthentication, cert); err != nil {
     // ...
 }
 ```
@@ -178,12 +178,12 @@ The certificate can later be used in combination with the private key. For
 example, to serve TLS traffic:
 
 ```go
-cert, err := yk.Certificate(piv.SlotAuthentication)
+cert, err := c.Certificate(piv.SlotAuthentication)
 if err != nil {
     // ...
 }
 
-priv, err := yk.PrivateKey(piv.SlotAuthentication, cert.PublicKey, auth)
+priv, err := c.PrivateKey(piv.SlotAuthentication, cert.PublicKey, auth)
 if err != nil {
     // ...
 }
@@ -209,7 +209,7 @@ key, then asks the YubiKey to sign an attestation certificate:
 
 ```go
 // Get the YubiKey's attestation certificate, which is signed by Yubico.
-yubiKeyAttestationCert, err := yk.AttestationCertificate()
+yubiKeyAttestationCert, err := c.AttestationCertificate()
 if err != nil {
     // ...
 }
@@ -221,10 +221,10 @@ key := piv.Key{
     PINPolicy:   piv.PINPolicyAlways,
     TouchPolicy: piv.TouchPolicyAlways,
 }
-if _, err := yk.GenerateKey(managementKey, piv.SlotAuthentication, key); err != nil {
+if _, err := c.GenerateKey(managementKey, piv.SlotAuthentication, key); err != nil {
     // ...
 }
-slotAttestationCertificate, err := yk.Attest(piv.SlotAuthentication)
+slotAttestationCertificate, err := c.Attest(piv.SlotAuthentication)
 if err != nil {
     // ...
 }

@@ -14,7 +14,7 @@ import (
 )
 
 type keyRSA struct {
-	yk   *YubiKey
+	c    *Card
 	slot Slot
 	pub  *rsa.PublicKey
 	auth KeyAuth
@@ -26,14 +26,14 @@ func (k *keyRSA) Public() crypto.PublicKey {
 }
 
 func (k *keyRSA) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	return k.auth.do(k.yk, k.pp, func(tx *scTx) ([]byte, error) {
-		return ykSignRSA(tx, rand, k.slot, k.pub, digest, opts)
+	return k.auth.do(k.c, k.pp, func(tx *scTx) ([]byte, error) {
+		return signRSA(tx, rand, k.slot, k.pub, digest, opts)
 	})
 }
 
 func (k *keyRSA) Decrypt(_ io.Reader, msg []byte, _ crypto.DecrypterOpts) ([]byte, error) {
-	return k.auth.do(k.yk, k.pp, func(tx *scTx) ([]byte, error) {
-		return ykDecryptRSA(tx, k.slot, k.pub, msg)
+	return k.auth.do(k.c, k.pp, func(tx *scTx) ([]byte, error) {
+		return decryptRSA(tx, k.slot, k.pub, msg)
 	})
 }
 
@@ -56,7 +56,7 @@ func decodeRSAPublic(b []byte) (*rsa.PublicKey, error) {
 	return &rsa.PublicKey{N: &n, E: int(e.Int64())}, nil
 }
 
-func ykDecryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, error) {
+func decryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, error) {
 	alg, err := rsaAlg(pub)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func ykDecryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte,
 	return nil, errInvalidPKCS1Padding
 }
 
-func ykSignRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func signRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	hash := opts.HashFunc()
 	if hash.Size() != len(digest) {
 		return nil, fmt.Errorf("%w: input must be a hashed message", errUnexpectedLength)

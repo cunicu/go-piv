@@ -11,7 +11,7 @@ import (
 )
 
 type keyEd25519 struct {
-	yk   *YubiKey
+	c    *Card
 	slot Slot
 	pub  ed25519.PublicKey
 	auth KeyAuth
@@ -23,7 +23,7 @@ func (k *keyEd25519) Public() crypto.PublicKey {
 }
 
 func (k *keyEd25519) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
-	return k.auth.do(k.yk, k.pp, func(tx *scTx) ([]byte, error) {
+	return k.auth.do(k.c, k.pp, func(tx *scTx) ([]byte, error) {
 		return skSignEd25519(tx, k.slot, k.pub, digest)
 	})
 }

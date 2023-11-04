@@ -5,12 +5,12 @@ package piv
 
 import "testing"
 
-func supportsAttestation(yk *YubiKey) bool {
-	return supportsVersion(yk.Version(), 4, 3, 0)
+func supportsAttestation(c *Card) bool {
+	return supportsVersion(c.Version(), 4, 3, 0)
 }
 
 func TestYubiKeyAttestation(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 	key := Key{
 		Algorithm:   AlgorithmEC256,
@@ -18,27 +18,27 @@ func TestYubiKeyAttestation(t *testing.T) {
 		TouchPolicy: TouchPolicyNever,
 	}
 
-	testRequiresVersion(t, yk, 4, 3, 0)
+	testRequiresVersion(t, c, 4, 3, 0)
 
-	cert, err := yk.AttestationCertificate()
+	certAttest, err := c.AttestationCertificate()
 	if err != nil {
 		t.Fatalf("getting attestation certificate: %v", err)
 	}
 
-	pub, err := yk.GenerateKey(DefaultManagementKey, SlotAuthentication, key)
+	pub, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, key)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
 	_ = pub
-	c, err := yk.Attest(SlotAuthentication)
+	certAuth, err := c.Attest(SlotAuthentication)
 	if err != nil {
 		t.Fatalf("attesting key: %v", err)
 	}
-	a, err := Verify(cert, c)
+	a, err := Verify(certAttest, certAuth)
 	if err != nil {
 		t.Fatalf("failed to verify attestation: %v", err)
 	}
-	serial, err := yk.Serial()
+	serial, err := c.Serial()
 	if err != nil {
 		t.Errorf("getting serial number: %v", err)
 	} else if a.Serial != serial {
@@ -51,8 +51,8 @@ func TestYubiKeyAttestation(t *testing.T) {
 	if a.TouchPolicy != key.TouchPolicy {
 		t.Errorf("attestation touch policy got=0x%x, wanted=0x%x", a.TouchPolicy, key.TouchPolicy)
 	}
-	if a.Version != yk.Version() {
-		t.Errorf("attestation version got=%#v, wanted=%#v", a.Version, yk.Version())
+	if a.Version != c.Version() {
+		t.Errorf("attestation version got=%#v, wanted=%#v", a.Version, c.Version())
 	}
 	if a.Slot != SlotAuthentication {
 		t.Errorf("attested slot got=%v, wanted=%v", a.Slot, SlotAuthentication)

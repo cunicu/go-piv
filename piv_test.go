@@ -28,17 +28,17 @@ func testGetVersion(t *testing.T, h *scard.Card) {
 		t.Fatalf("new transaction: %v", err)
 	}
 	defer tx.Close()
-	if err := ykSelectApplication(tx, aidPIV[:]); err != nil {
+	if err := selectApplication(tx, aidPIV[:]); err != nil {
 		t.Fatalf("selecting application: %v", err)
 	}
-	if _, err := ykVersion(tx); err != nil {
+	if _, err := getVersion(tx); err != nil {
 		t.Fatalf("listing version: %v", err)
 	}
 }
 
 //nolint:unparam
-func testRequiresVersion(t *testing.T, yk *YubiKey, major, minor, patch int) {
-	v := yk.Version()
+func testRequiresVersion(t *testing.T, c *Card, major, minor, patch int) {
+	v := c.Version()
 	if !supportsVersion(v, major, minor, patch) {
 		t.Skipf("test requires yubikey version %d.%d.%d: got=%d.%d.%d", major, minor, patch, v.Major, v.Minor, v.Patch)
 	}
@@ -52,7 +52,7 @@ func TestCards(t *testing.T) {
 	}
 }
 
-func newTestYubiKey(t *testing.T) (*YubiKey, func()) {
+func newTestCard(t *testing.T) (*Card, func()) {
 	cards, err := Cards()
 	if err != nil {
 		t.Fatalf("listing cards: %v", err)
@@ -64,12 +64,12 @@ func newTestYubiKey(t *testing.T) (*YubiKey, func()) {
 		if !*canModifyYubiKey {
 			t.Skip("not running test that accesses yubikey, provide --reset-yubikey flag")
 		}
-		yk, err := Open(card)
+		c, err := Open(card)
 		if err != nil {
 			t.Fatalf("getting new yubikey: %v", err)
 		}
-		return yk, func() {
-			if err := yk.Close(); err != nil {
+		return c, func() {
+			if err := c.Close(); err != nil {
 				t.Errorf("closing yubikey: %v", err)
 			}
 		}
@@ -79,7 +79,7 @@ func newTestYubiKey(t *testing.T) (*YubiKey, func()) {
 }
 
 func TestNewYubiKey(t *testing.T) {
-	_, closeCard := newTestYubiKey(t)
+	_, closeCard := newTestCard(t)
 	defer closeCard()
 }
 
@@ -95,12 +95,12 @@ func TestMultipleConnections(t *testing.T) {
 		if !*canModifyYubiKey {
 			t.Skip("not running test that accesses yubikey, provide --reset-yubikey flag")
 		}
-		yk, err := Open(card)
+		c, err := Open(card)
 		if err != nil {
 			t.Fatalf("getting new yubikey: %v", err)
 		}
 		defer func() {
-			if err := yk.Close(); err != nil {
+			if err := c.Close(); err != nil {
 				t.Errorf("closing yubikey: %v", err)
 			}
 		}()
@@ -122,35 +122,35 @@ func TestMultipleConnections(t *testing.T) {
 }
 
 func TestYubiKeySerial(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if _, err := yk.Serial(); err != nil {
+	if _, err := c.Serial(); err != nil {
 		t.Fatalf("getting serial number: %v", err)
 	}
 }
 
 func TestYubiKeyLoginNeeded(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	testRequiresVersion(t, yk, 4, 3, 0)
+	testRequiresVersion(t, c, 4, 3, 0)
 
-	if !ykLoginNeeded(yk.tx) {
+	if !loginNeeded(c.tx) {
 		t.Errorf("expected login needed")
 	}
-	if err := ykLogin(yk.tx, DefaultPIN); err != nil {
+	if err := login(c.tx, DefaultPIN); err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	if ykLoginNeeded(yk.tx) {
+	if loginNeeded(c.tx) {
 		t.Errorf("expected no login needed")
 	}
 }
 
 func TestYubiKeyPINRetries(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
-	retries, err := yk.Retries()
+	retries, err := c.Retries()
 	if err != nil {
 		t.Fatalf("getting retries: %v", err)
 	}
@@ -163,36 +163,36 @@ func TestYubiKeyReset(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
-	if err := yk.Reset(); err != nil {
+	if err := c.Reset(); err != nil {
 		t.Fatalf("resetting yubikey: %v", err)
 	}
-	if err := yk.VerifyPIN(DefaultPIN); err != nil {
+	if err := c.VerifyPIN(DefaultPIN); err != nil {
 		t.Fatalf("login: %v", err)
 	}
 }
 
 func TestYubiKeyLogin(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if err := yk.VerifyPIN(DefaultPIN); err != nil {
+	if err := c.VerifyPIN(DefaultPIN); err != nil {
 		t.Fatalf("login: %v", err)
 	}
 }
 
 func TestYubiKeyAuthenticate(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if err := yk.authManagementKey(DefaultManagementKey); err != nil {
+	if err := c.authManagementKey(DefaultManagementKey); err != nil {
 		t.Errorf("authenticating: %v", err)
 	}
 }
 
 func TestYubiKeySetManagementKey(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	var mgmtKey [24]byte
@@ -200,24 +200,24 @@ func TestYubiKeySetManagementKey(t *testing.T) {
 		t.Fatalf("generating management key: %v", err)
 	}
 
-	if err := yk.SetManagementKey(DefaultManagementKey, mgmtKey); err != nil {
+	if err := c.SetManagementKey(DefaultManagementKey, mgmtKey); err != nil {
 		t.Fatalf("setting management key: %v", err)
 	}
-	if err := yk.authManagementKey(mgmtKey); err != nil {
+	if err := c.authManagementKey(mgmtKey); err != nil {
 		t.Errorf("authenticating with new management key: %v", err)
 	}
-	if err := yk.SetManagementKey(mgmtKey, DefaultManagementKey); err != nil {
+	if err := c.SetManagementKey(mgmtKey, DefaultManagementKey); err != nil {
 		t.Fatalf("resetting management key: %v", err)
 	}
 }
 
 func TestYubiKeyUnblockPIN(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	badPIN := "0"
 	for {
-		err := ykLogin(yk.tx, badPIN)
+		err := login(c.tx, badPIN)
 		if err == nil {
 			t.Fatalf("login with bad pin succeeded")
 		}
@@ -230,48 +230,48 @@ func TestYubiKeyUnblockPIN(t *testing.T) {
 		}
 	}
 
-	if err := yk.Unblock(DefaultPUK, DefaultPIN); err != nil {
+	if err := c.Unblock(DefaultPUK, DefaultPIN); err != nil {
 		t.Fatalf("unblocking pin: %v", err)
 	}
-	if err := ykLogin(yk.tx, DefaultPIN); err != nil {
+	if err := login(c.tx, DefaultPIN); err != nil {
 		t.Errorf("failed to login with pin after unblock: %v", err)
 	}
 }
 
 func TestYubiKeyChangePIN(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	newPIN := "654321"
-	if err := yk.SetPIN(newPIN, newPIN); err == nil {
+	if err := c.SetPIN(newPIN, newPIN); err == nil {
 		t.Errorf("successfully changed pin with invalid pin, expected error")
 	}
-	if err := yk.SetPIN(DefaultPIN, newPIN); err != nil {
+	if err := c.SetPIN(DefaultPIN, newPIN); err != nil {
 		t.Fatalf("changing pin: %v", err)
 	}
-	if err := yk.SetPIN(newPIN, DefaultPIN); err != nil {
+	if err := c.SetPIN(newPIN, DefaultPIN); err != nil {
 		t.Fatalf("resetting pin: %v", err)
 	}
 }
 
 func TestYubiKeyChangePUK(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	newPUK := "87654321"
-	if err := yk.SetPUK(newPUK, newPUK); err == nil {
+	if err := c.SetPUK(newPUK, newPUK); err == nil {
 		t.Errorf("successfully changed puk with invalid puk, expected error")
 	}
-	if err := yk.SetPUK(DefaultPUK, newPUK); err != nil {
+	if err := c.SetPUK(DefaultPUK, newPUK); err != nil {
 		t.Fatalf("changing puk: %v", err)
 	}
-	if err := yk.SetPUK(newPUK, DefaultPUK); err != nil {
+	if err := c.SetPUK(newPUK, DefaultPUK); err != nil {
 		t.Fatalf("resetting puk: %v", err)
 	}
 }
 
 func TestChangeManagementKey(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	var newKey [24]byte
@@ -284,13 +284,13 @@ func TestChangeManagementKey(t *testing.T) {
 			newKey[i] = b ^ 1 // flip least significant bit
 		}
 	}
-	if err := yk.SetManagementKey(newKey, newKey); err == nil {
+	if err := c.SetManagementKey(newKey, newKey); err == nil {
 		t.Errorf("successfully changed management key with invalid key, expected error")
 	}
-	if err := yk.SetManagementKey(DefaultManagementKey, newKey); err != nil {
+	if err := c.SetManagementKey(DefaultManagementKey, newKey); err != nil {
 		t.Fatalf("changing management key: %v", err)
 	}
-	if err := yk.SetManagementKey(newKey, DefaultManagementKey); err != nil {
+	if err := c.SetManagementKey(newKey, DefaultManagementKey); err != nil {
 		t.Fatalf("resetting management key: %v", err)
 	}
 }

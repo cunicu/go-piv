@@ -16,8 +16,8 @@ import (
 
 //nolint:gocognit
 func TestSlots(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
-	if err := yk.Reset(); err != nil {
+	c, closeCard := newTestCard(t)
+	if err := c.Reset(); err != nil {
 		t.Fatalf("resetting yubikey: %v", err)
 	}
 	closeCard()
@@ -34,11 +34,11 @@ func TestSlots(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 
-			if supportsAttestation(yk) {
-				if _, err := yk.Attest(test.slot); err == nil || !errors.Is(err, ErrNotFound) {
+			if supportsAttestation(c) {
+				if _, err := c.Attest(test.slot); err == nil || !errors.Is(err, ErrNotFound) {
 					t.Errorf("attest: got=%v, want=ErrNotFound", err)
 				}
 			}
@@ -48,18 +48,18 @@ func TestSlots(t *testing.T) {
 				PINPolicy:   PINPolicyNever,
 				TouchPolicy: TouchPolicyNever,
 			}
-			pub, err := yk.GenerateKey(DefaultManagementKey, test.slot, k)
+			pub, err := c.GenerateKey(DefaultManagementKey, test.slot, k)
 			if err != nil {
 				t.Fatalf("generating key on slot: %v", err)
 			}
 
-			if supportsAttestation(yk) {
-				if _, err := yk.Attest(test.slot); err != nil {
+			if supportsAttestation(c) {
+				if _, err := c.Attest(test.slot); err != nil {
 					t.Errorf("attest: %v", err)
 				}
 			}
 
-			priv, err := yk.PrivateKey(test.slot, pub, KeyAuth{PIN: DefaultPIN})
+			priv, err := c.PrivateKey(test.slot, pub, KeyAuth{PIN: DefaultPIN})
 			if err != nil {
 				t.Fatalf("private key: %v", err)
 			}
@@ -81,13 +81,13 @@ func TestSlots(t *testing.T) {
 				t.Fatalf("parse certificate: %v", err)
 			}
 
-			if _, err := yk.Certificate(test.slot); err == nil || !errors.Is(err, ErrNotFound) {
+			if _, err := c.Certificate(test.slot); err == nil || !errors.Is(err, ErrNotFound) {
 				t.Errorf("get certificate, got err=%v, want=ErrNotFound", err)
 			}
-			if err := yk.SetCertificate(DefaultManagementKey, test.slot, cert); err != nil {
+			if err := c.SetCertificate(DefaultManagementKey, test.slot, cert); err != nil {
 				t.Fatalf("set certificate: %v", err)
 			}
-			got, err := yk.Certificate(test.slot)
+			got, err := c.Certificate(test.slot)
 			if err != nil {
 				t.Fatalf("get certifiate: %v", err)
 			}

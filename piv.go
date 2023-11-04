@@ -88,11 +88,11 @@ const (
 	insGetMetadata   = 0xf7
 )
 
-// YubiKey is an exclusive open connection to a YubiKey smart card. While open,
+// Card is an exclusive open connection to a Card smart card. While open,
 // no other process can query the given card.
 //
 // To release the connection, call the Close method.
-type YubiKey struct {
+type Card struct {
 	ctx *scard.Context
 	h   *scard.Card
 	tx  *scTx
@@ -108,9 +108,9 @@ type YubiKey struct {
 }
 
 // Close releases the connection to the smart card.
-func (yk *YubiKey) Close() error {
-	err1 := yk.h.Disconnect(scard.LeaveCard)
-	err2 := yk.ctx.Release()
+func (c *Card) Close() error {
+	err1 := c.h.Disconnect(scard.LeaveCard)
+	err2 := c.ctx.Release()
 	if err1 == nil {
 		return err2
 	}
@@ -118,7 +118,7 @@ func (yk *YubiKey) Close() error {
 }
 
 // Open connects to a YubiKey smart card.
-func Open(card string) (*YubiKey, error) {
+func Open(card string) (*Card, error) {
 	var c client
 	return c.Open(card)
 }
@@ -128,27 +128,27 @@ func Open(card string) (*YubiKey, error) {
 //
 // Older YubiKeys return values that aren't directly related to the YubiKey
 // version. For example, 3rd generation YubiKeys report 1.0.X.
-func (yk *YubiKey) Version() Version {
+func (c *Card) Version() Version {
 	return Version{
-		Major: int(yk.version.major),
-		Minor: int(yk.version.minor),
-		Patch: int(yk.version.patch),
+		Major: int(c.version.major),
+		Minor: int(c.version.minor),
+		Patch: int(c.version.patch),
 	}
 }
 
 // Serial returns the YubiKey's serial number.
-func (yk *YubiKey) Serial() (uint32, error) {
+func (c *Card) Serial() (uint32, error) {
 	cmd := apdu{instruction: insGetSerial}
-	if yk.version.major < 5 {
+	if c.version.major < 5 {
 		// Earlier versions of YubiKeys required using the YubiKey applet to get
 		// the serial number. Newer ones have this built into the PIV applet.
-		if err := ykSelectApplication(yk.tx, aidYubiKey[:]); err != nil {
+		if err := selectApplication(c.tx, aidYubiKey[:]); err != nil {
 			return 0, fmt.Errorf("failed to select YubiKey applet: %w", err)
 		}
-		defer ykSelectApplication(yk.tx, aidPIV[:]) //nolint:errcheck
+		defer selectApplication(c.tx, aidPIV[:]) //nolint:errcheck
 		cmd = apdu{instruction: 0x01, param1: 0x10}
 	}
-	resp, err := yk.tx.Transmit(cmd)
+	resp, err := c.tx.Transmit(cmd)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute command: %w", err)
 	}
@@ -183,11 +183,11 @@ func encodePIN(pin string) ([]byte, error) {
 // point the PUK must be used to unblock the PIN.
 //
 // Use DefaultPIN if the PIN hasn't been set.
-func (yk *YubiKey) VerifyPIN(pin string) error {
-	return ykLogin(yk.tx, pin)
+func (c *Card) VerifyPIN(pin string) error {
+	return login(c.tx, pin)
 }
 
-func ykLogin(tx *scTx, pin string) error {
+func login(tx *scTx, pin string) error {
 	data, err := encodePIN(pin)
 	if err != nil {
 		return err
@@ -201,16 +201,16 @@ func ykLogin(tx *scTx, pin string) error {
 	return nil
 }
 
-func ykLoginNeeded(tx *scTx) bool {
+func loginNeeded(tx *scTx) bool {
 	cmd := apdu{instruction: insVerify, param2: 0x80}
 	_, err := tx.Transmit(cmd)
 	return err != nil
 }
 
 // Retries returns the number of attempts remaining to enter the correct PIN.
-func (yk *YubiKey) Retries() (int, error) {
+func (c *Card) Retries() (int, error) {
 	cmd := apdu{instruction: insVerify, param2: 0x80}
-	_, err := yk.tx.Transmit(cmd)
+	_, err := c.tx.Transmit(cmd)
 	if err == nil {
 		return 0, fmt.Errorf("%w from empty pin", errExpectedError)
 	}
@@ -224,16 +224,16 @@ func (yk *YubiKey) Retries() (int, error) {
 // Reset resets the YubiKey PIV applet to its factory settings, wiping all slots
 // and resetting the PIN, PUK, and Management Key to their default values. This
 // does NOT affect data on other applets, such as GPG or U2F.
-func (yk *YubiKey) Reset() error {
+func (c *Card) Reset() error {
 	// Reset only works if both the PIN and PUK are blocked. Before resetting,
 	// try the wrong PIN and PUK multiple times to block them.
 
 	maxPIN := big.NewInt(100_000_000)
-	pinInt, err := rand.Int(yk.rand, maxPIN)
+	pinInt, err := rand.Int(c.rand, maxPIN)
 	if err != nil {
 		return fmt.Errorf("failed to generate random PIN: %w", err)
 	}
-	pukInt, err := rand.Int(yk.rand, maxPIN)
+	pukInt, err := rand.Int(c.rand, maxPIN)
 	if err != nil {
 		return fmt.Errorf("failed to generate random PUK: %w", err)
 	}
@@ -242,7 +242,7 @@ func (yk *YubiKey) Reset() error {
 	puk := pukInt.String()
 
 	for {
-		if err := ykLogin(yk.tx, pin); err == nil {
+		if err := login(c.tx, pin); err == nil {
 			// TODO: do we care about a 1/100million chance?
 			return fmt.Errorf("%w with random PIN", errExpectedError)
 		}
@@ -256,7 +256,7 @@ func (yk *YubiKey) Reset() error {
 	}
 
 	for {
-		if err := yk.SetPUK(puk, puk); err == nil {
+		if err := c.SetPUK(puk, puk); err == nil {
 			// TODO: do we care about a 1/100million chance?
 			return fmt.Errorf("%w with random PUK", errExpectedError)
 		}
@@ -270,7 +270,7 @@ func (yk *YubiKey) Reset() error {
 	}
 
 	cmd := apdu{instruction: insReset}
-	if _, err := yk.tx.Transmit(cmd); err != nil {
+	if _, err := c.tx.Transmit(cmd); err != nil {
 		return fmt.Errorf("failed to reset YubiKey: %w", err)
 	}
 	return nil
@@ -287,8 +287,8 @@ type version struct {
 // certificates to slots.
 //
 // Use DefaultManagementKey if the management key hasn't been set.
-func (yk *YubiKey) authManagementKey(key [24]byte) error {
-	return ykAuthenticate(yk.tx, key, yk.rand)
+func (c *Card) authManagementKey(key [24]byte) error {
+	return authenticate(c.tx, key, c.rand)
 }
 
 // Smartcard Application IDs for YubiKeys.
@@ -304,7 +304,7 @@ var (
 	aidYubiKey    = [...]byte{0xa0, 0x00, 0x00, 0x05, 0x27, 0x20, 0x01, 0x01}
 )
 
-func ykAuthenticate(tx *scTx, key [24]byte, rand io.Reader) error {
+func authenticate(tx *scTx, key [24]byte, rand io.Reader) error {
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=92
 	// https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=918402#page=114
 
@@ -401,11 +401,11 @@ func ykAuthenticate(tx *scTx, key [24]byte, rand io.Reader) error {
 //	if _, err := io.ReadFull(rand.Reader, newKey[:]); err != nil {
 //		// ...
 //	}
-//	if err := yk.SetManagementKey(piv.DefaultManagementKey, newKey); err != nil {
+//	if err := c.SetManagementKey(piv.DefaultManagementKey, newKey); err != nil {
 //		// ...
 //	}
-func (yk *YubiKey) SetManagementKey(oldKey, newKey [24]byte) error {
-	if err := ykAuthenticate(yk.tx, oldKey, yk.rand); err != nil {
+func (c *Card) SetManagementKey(oldKey, newKey [24]byte) error {
+	if err := authenticate(c.tx, oldKey, c.rand); err != nil {
 		return fmt.Errorf("failed to authenticate with old key: %w", err)
 	}
 
@@ -421,7 +421,7 @@ func (yk *YubiKey) SetManagementKey(oldKey, newKey [24]byte) error {
 	if touch {
 		cmd.param2 = 0xfe
 	}
-	if _, err := yk.tx.Transmit(cmd); err != nil {
+	if _, err := c.tx.Transmit(cmd); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
 	return nil
@@ -439,10 +439,10 @@ func (yk *YubiKey) SetManagementKey(oldKey, newKey [24]byte) error {
 //	}
 //	// Format with leading zeros.
 //	newPIN := fmt.Sprintf("%06d", newPINInt)
-//	if err := yk.SetPIN(piv.DefaultPIN, newPIN); err != nil {
+//	if err := c.SetPIN(piv.DefaultPIN, newPIN); err != nil {
 //		// ...
 //	}
-func (yk *YubiKey) SetPIN(oldPIN, newPIN string) error {
+func (c *Card) SetPIN(oldPIN, newPIN string) error {
 	oldPINData, err := encodePIN(oldPIN)
 	if err != nil {
 		return fmt.Errorf("failed to encode old PIN: %w", err)
@@ -456,12 +456,12 @@ func (yk *YubiKey) SetPIN(oldPIN, newPIN string) error {
 		param2:      0x80,
 		data:        append(oldPINData, newPINData...),
 	}
-	_, err = yk.tx.Transmit(cmd)
+	_, err = c.tx.Transmit(cmd)
 	return err
 }
 
 // Unblock unblocks the PIN, setting it to a new value.
-func (yk *YubiKey) Unblock(puk, newPIN string) error {
+func (c *Card) Unblock(puk, newPIN string) error {
 	pukData, err := encodePIN(puk)
 	if err != nil {
 		return fmt.Errorf("failed to encode PUK: %w", err)
@@ -475,7 +475,7 @@ func (yk *YubiKey) Unblock(puk, newPIN string) error {
 		param2:      0x80,
 		data:        append(pukData, newPINData...),
 	}
-	_, err = yk.tx.Transmit(cmd)
+	_, err = c.tx.Transmit(cmd)
 	return err
 }
 
@@ -491,10 +491,10 @@ func (yk *YubiKey) Unblock(puk, newPIN string) error {
 //	}
 //	// Format with leading zeros.
 //	newPUK := fmt.Sprintf("%08d", newPUKInt)
-//	if err := yk.SetPUK(piv.DefaultPUK, newPUK); err != nil {
+//	if err := c.SetPUK(piv.DefaultPUK, newPUK); err != nil {
 //		// ...
 //	}
-func (yk *YubiKey) SetPUK(oldPUK, newPUK string) error {
+func (c *Card) SetPUK(oldPUK, newPUK string) error {
 	oldPUKData, err := encodePIN(oldPUK)
 	if err != nil {
 		return fmt.Errorf("failed to encode old PUK: %w", err)
@@ -508,11 +508,11 @@ func (yk *YubiKey) SetPUK(oldPUK, newPUK string) error {
 		param2:      0x81,
 		data:        append(oldPUKData, newPUKData...),
 	}
-	_, err = yk.tx.Transmit(cmd)
+	_, err = c.tx.Transmit(cmd)
 	return err
 }
 
-func ykSelectApplication(tx *scTx, id []byte) error {
+func selectApplication(tx *scTx, id []byte) error {
 	cmd := apdu{
 		instruction: insSelectApplication,
 		param1:      0x04,
@@ -524,7 +524,7 @@ func ykSelectApplication(tx *scTx, id []byte) error {
 	return nil
 }
 
-func ykVersion(tx *scTx) (*version, error) {
+func getVersion(tx *scTx) (*version, error) {
 	cmd := apdu{
 		instruction: insGetVersion,
 	}

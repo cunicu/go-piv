@@ -106,10 +106,10 @@ func (m *Metadata) unmarshal(b []byte) error {
 
 // Metadata returns protected data stored on the card. This can be used to
 // retrieve PIN protected management keys.
-func (yk *YubiKey) Metadata(pin string) (*Metadata, error) {
+func (c *Card) Metadata(pin string) (*Metadata, error) {
 	// NOTE: for some reason this action requires the PIN to be authenticated on
 	// the same transaction. It doesn't work otherwise.
-	if err := ykLogin(yk.tx, pin); err != nil {
+	if err := login(c.tx, pin); err != nil {
 		return nil, fmt.Errorf("failed to authenticate with PIN: %w", err)
 	}
 	cmd := apdu{
@@ -124,7 +124,7 @@ func (yk *YubiKey) Metadata(pin string) (*Metadata, error) {
 			0x09,
 		},
 	}
-	resp, err := yk.tx.Transmit(cmd)
+	resp, err := c.tx.Transmit(cmd)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return &Metadata{}, nil
@@ -145,7 +145,7 @@ func (yk *YubiKey) Metadata(pin string) (*Metadata, error) {
 // SetMetadata sets PIN protected metadata on the key. This is primarily to
 // store the management key on the smart card instead of managing the PIN and
 // management key separately.
-func (yk *YubiKey) SetMetadata(key [24]byte, m *Metadata) error {
+func (c *Card) SetMetadata(key [24]byte, m *Metadata) error {
 	data, err := m.marshal()
 	if err != nil {
 		return fmt.Errorf("failed to encode metadata: %w", err)
@@ -165,10 +165,10 @@ func (yk *YubiKey) SetMetadata(key [24]byte, m *Metadata) error {
 	}
 	// NOTE: for some reason this action requires the management key authenticated
 	// on the same transaction. It doesn't work otherwise.
-	if err := ykAuthenticate(yk.tx, key, rand.Reader); err != nil {
+	if err := authenticate(c.tx, key, rand.Reader); err != nil {
 		return fmt.Errorf("failed to authenticate with key: %w", err)
 	}
-	if _, err := yk.tx.Transmit(cmd); err != nil {
+	if _, err := c.tx.Transmit(cmd); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
 	return nil

@@ -34,7 +34,7 @@ func TestYubiKeySignRSA(t *testing.T) {
 			if test.long && testing.Short() {
 				t.Skip("skipping test in short mode")
 			}
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 			slot := SlotAuthentication
 			key := Key{
@@ -42,7 +42,7 @@ func TestYubiKeySignRSA(t *testing.T) {
 				TouchPolicy: TouchPolicyNever,
 				PINPolicy:   PINPolicyNever,
 			}
-			pubKey, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+			pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
 			if err != nil {
 				t.Fatalf("generating key: %v", err)
 			}
@@ -51,7 +51,7 @@ func TestYubiKeySignRSA(t *testing.T) {
 				t.Fatalf("public key is not an rsa key")
 			}
 			data := sha256.Sum256([]byte("hello"))
-			priv, err := yk.PrivateKey(slot, pub, KeyAuth{})
+			priv, err := c.PrivateKey(slot, pub, KeyAuth{})
 			if err != nil {
 				t.Fatalf("getting private key: %v", err)
 			}
@@ -84,7 +84,7 @@ func TestYubiKeySignRSAPSS(t *testing.T) {
 			if test.long && testing.Short() {
 				t.Skip("skipping test in short mode")
 			}
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 			slot := SlotAuthentication
 			key := Key{
@@ -92,7 +92,7 @@ func TestYubiKeySignRSAPSS(t *testing.T) {
 				TouchPolicy: TouchPolicyNever,
 				PINPolicy:   PINPolicyNever,
 			}
-			pubKey, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+			pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
 			if err != nil {
 				t.Fatalf("generating key: %v", err)
 			}
@@ -101,7 +101,7 @@ func TestYubiKeySignRSAPSS(t *testing.T) {
 				t.Fatalf("public key is not an rsa key")
 			}
 			data := sha256.Sum256([]byte("hello"))
-			priv, err := yk.PrivateKey(slot, pub, KeyAuth{})
+			priv, err := c.PrivateKey(slot, pub, KeyAuth{})
 			if err != nil {
 				t.Fatalf("getting private key: %v", err)
 			}
@@ -157,7 +157,7 @@ func TestSetRSAPrivateKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			yk, closeCard := newTestYubiKey(t)
+			c, closeCard := newTestCard(t)
 			defer closeCard()
 
 			generated, err := rsa.GenerateKey(rand.Reader, tt.bits)
@@ -165,7 +165,7 @@ func TestSetRSAPrivateKey(t *testing.T) {
 				t.Fatalf("generating private key: %v", err)
 			}
 
-			if err = yk.SetPrivateKeyInsecure(DefaultManagementKey, tt.slot, generated, Key{
+			if err = c.SetPrivateKeyInsecure(DefaultManagementKey, tt.slot, generated, Key{
 				PINPolicy:   PINPolicyNever,
 				TouchPolicy: TouchPolicyNever,
 			}); !errors.Is(err, tt.wantErr) {
@@ -175,7 +175,7 @@ func TestSetRSAPrivateKey(t *testing.T) {
 				return
 			}
 
-			priv, err := yk.PrivateKey(tt.slot, &generated.PublicKey, KeyAuth{})
+			priv, err := c.PrivateKey(tt.slot, &generated.PublicKey, KeyAuth{})
 			if err != nil {
 				t.Fatalf("getting private key: %v", err)
 			}
@@ -207,7 +207,7 @@ func TestSetRSAPrivateKey(t *testing.T) {
 }
 
 func TestTLS13(t *testing.T) {
-	yk, closeCard := newTestYubiKey(t)
+	c, closeCard := newTestCard(t)
 	defer closeCard()
 	slot := SlotAuthentication
 	key := Key{
@@ -215,11 +215,11 @@ func TestTLS13(t *testing.T) {
 		TouchPolicy: TouchPolicyNever,
 		PINPolicy:   PINPolicyNever,
 	}
-	pub, err := yk.GenerateKey(DefaultManagementKey, slot, key)
+	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
 	if err != nil {
 		t.Fatalf("generating key: %v", err)
 	}
-	priv, err := yk.PrivateKey(slot, pub, KeyAuth{})
+	priv, err := c.PrivateKey(slot, pub, KeyAuth{})
 	if err != nil {
 		t.Fatalf("getting private key: %v", err)
 	}

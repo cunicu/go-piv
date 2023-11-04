@@ -164,8 +164,8 @@ func parseAttestation(slotCert *x509.Certificate) (*Attestation, error) {
 
 // AttestationCertificate returns the YubiKey's attestation certificate, which
 // is unique to the key and signed by Yubico.
-func (yk *YubiKey) AttestationCertificate() (*x509.Certificate, error) {
-	return yk.Certificate(slotAttestation)
+func (c *Card) AttestationCertificate() (*x509.Certificate, error) {
+	return c.Certificate(slotAttestation)
 }
 
 // Attest generates a certificate for a key, signed by the YubiKey's attestation
@@ -180,8 +180,8 @@ func (yk *YubiKey) AttestationCertificate() (*x509.Certificate, error) {
 // is NOT suitable for TLS.
 //
 // If the slot doesn't have a key, the returned error wraps ErrNotFound.
-func (yk *YubiKey) Attest(slot Slot) (cert *x509.Certificate, err error) {
-	if cert, err = ykAttest(yk.tx, slot); err == nil {
+func (c *Card) Attest(slot Slot) (cert *x509.Certificate, err error) {
+	if cert, err = attest(c.tx, slot); err == nil {
 		return cert, nil
 	}
 	var e *apduError
@@ -191,7 +191,7 @@ func (yk *YubiKey) Attest(slot Slot) (cert *x509.Certificate, err error) {
 	return nil, err
 }
 
-func ykAttest(tx *scTx, slot Slot) (*x509.Certificate, error) {
+func attest(tx *scTx, slot Slot) (*x509.Certificate, error) {
 	cmd := apdu{
 		instruction: insAttest,
 		param1:      byte(slot.Key),
