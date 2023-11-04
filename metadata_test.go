@@ -4,9 +4,11 @@
 package piv
 
 import (
-	"bytes"
 	"encoding/hex"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetadata(t *testing.T) {
@@ -16,40 +18,35 @@ func TestMetadata(t *testing.T) {
 	func() {
 		c, closeCard := newTestCard(t)
 		defer closeCard()
-		if err := c.Reset(); err != nil {
-			t.Fatalf("resetting card: %v", err)
-		}
+
+		err := c.Reset()
+		require.NoError(t, err, "Failed to reset applet")
 	}()
 
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
-	if m, err := c.Metadata(DefaultPIN); err != nil {
-		t.Errorf("getting metadata: %v", err)
-	} else if m.ManagementKey != nil {
-		t.Errorf("expected no management key set")
-	}
+	m, err := c.Metadata(DefaultPIN)
+	assert.NoError(t, err, "Failed to get metadata")
+	assert.Nil(t, m.ManagementKey, "Expected no management key set")
 
 	wantKey := [24]byte{
 		0x09, 0xd9, 0x87, 0x81, 0xfb, 0xdc, 0xc9, 0xb6,
 		0x91, 0xa2, 0x05, 0x80, 0x6e, 0xc0, 0xba, 0x84,
 		0x31, 0xac, 0x0d, 0x9f, 0x59, 0xa5, 0x00, 0xad,
 	}
-	m := &Metadata{
+
+	m = &Metadata{
 		ManagementKey: &wantKey,
 	}
-	if err := c.SetMetadata(DefaultManagementKey, m); err != nil {
-		t.Fatalf("setting metadata: %v", err)
-	}
+
+	err = c.SetMetadata(DefaultManagementKey, m)
+	require.NoError(t, err, "Failed to set metadata")
+
 	got, err := c.Metadata(DefaultPIN)
-	if err != nil {
-		t.Fatalf("getting metadata: %v", err)
-	}
-	if got.ManagementKey == nil {
-		t.Errorf("no management key")
-	} else if *got.ManagementKey != wantKey {
-		t.Errorf("wanted management key=0x%x, got=0x%x", wantKey, got.ManagementKey)
-	}
+	require.NoError(t, err, "Failed to get metadata")
+	require.NotNil(t, got.ManagementKey, "No management key")
+	require.Equal(t, wantKey, *got.ManagementKey, "Wanted management key=0x%x, got=0x%x", wantKey, got.ManagementKey)
 }
 
 func TestMetadataUnmarshal(t *testing.T) {
@@ -60,16 +57,14 @@ func TestMetadataUnmarshal(t *testing.T) {
 		0x31, 0xac, 0x0d, 0x9f, 0x59, 0xa5, 0x00, 0xad,
 	}
 	var m Metadata
-	if err := m.unmarshal(data); err != nil {
-		t.Fatalf("parsing metadata: %v", err)
-	}
-	if m.ManagementKey == nil {
-		t.Fatalf("no management key")
-	}
+
+	err := m.unmarshal(data)
+	require.NoError(t, err, "Failed to parse metadata")
+
+	require.NotNil(t, m.ManagementKey, "No management key")
+
 	gotKey := *m.ManagementKey
-	if gotKey != wantKey {
-		t.Errorf("(*Metadata).unmarshal, got key=0x%x, want key=0x%x", gotKey, wantKey)
-	}
+	assert.Equal(t, wantKey, gotKey)
 }
 
 func TestMetadataMarshal(t *testing.T) {
@@ -87,13 +82,10 @@ func TestMetadataMarshal(t *testing.T) {
 	m := Metadata{
 		ManagementKey: &key,
 	}
+
 	got, err := m.marshal()
-	if err != nil {
-		t.Fatalf("marshaling key: %v", err)
-	}
-	if !bytes.Equal(want, got) {
-		t.Errorf("(*Metadata.marshal, got=0x%x, want=0x%x", got, want)
-	}
+	require.NoError(t, err, "Failed to marshal key")
+	assert.Equal(t, want, got)
 }
 
 func TestMetadataUpdate(t *testing.T) {
@@ -113,20 +105,15 @@ func TestMetadataUpdate(t *testing.T) {
 		ManagementKey: &DefaultManagementKey,
 	}
 	raw, err := m1.marshal()
-	if err != nil {
-		t.Fatalf("marshaling key: %v", err)
-	}
+	require.NoError(t, err, "Failed to marshal key")
+
 	m2 := Metadata{
 		ManagementKey: &key,
 		raw:           raw,
 	}
 	got, err := m2.marshal()
-	if err != nil {
-		t.Fatalf("marshaling updated metadata: %v", err)
-	}
-	if !bytes.Equal(want, got) {
-		t.Errorf("(*Metadata.marshal, got=0x%x, want=0x%x", got, want)
-	}
+	require.NoError(t, err, "Failed to marshal updated metadata")
+	assert.Equal(t, want, got)
 }
 
 func TestMetadataAdditionalFields(t *testing.T) {
@@ -164,10 +151,6 @@ func TestMetadataAdditionalFields(t *testing.T) {
 		raw:           raw,
 	}
 	got, err := m.marshal()
-	if err != nil {
-		t.Fatalf("marshaling updated metadata: %v", err)
-	}
-	if !bytes.Equal(want, got) {
-		t.Errorf("(*Metadata.marshal, got=0x%x, want=0x%x", got, want)
-	}
+	require.NoError(t, err, "Failed to marshal updated metadata")
+	assert.Equal(t, want, got)
 }

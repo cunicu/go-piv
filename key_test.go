@@ -4,7 +4,6 @@
 package piv
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -20,6 +19,9 @@ import (
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -48,9 +50,8 @@ func TestPINPrompt(t *testing.T) {
 				TouchPolicy: TouchPolicyNever,
 			}
 			pub, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, k)
-			if err != nil {
-				t.Fatalf("generating key on slot: %v", err)
-			}
+			require.NoError(t, err, "Failed to generate key on slot")
+
 			got := 0
 			auth := KeyAuth{
 				PINPrompt: func() (string, error) {
@@ -64,23 +65,20 @@ func TestPINPrompt(t *testing.T) {
 			}
 
 			priv, err := c.PrivateKey(SlotAuthentication, pub, auth)
-			if err != nil {
-				t.Fatalf("building private key: %v", err)
-			}
+			require.NoError(t, err, "Failed to build private key")
+
 			s, ok := priv.(crypto.Signer)
-			if !ok {
-				t.Fatalf("expected crypto.Signer: got=%T", priv)
-			}
+			require.True(t, ok, "Expected crypto.Signer: got=%T", priv)
+
 			data := sha256.Sum256([]byte("foo"))
-			if _, err := s.Sign(rand.Reader, data[:], crypto.SHA256); err != nil {
-				t.Errorf("signing error: %v", err)
-			}
-			if _, err := s.Sign(rand.Reader, data[:], crypto.SHA256); err != nil {
-				t.Errorf("signing error: %v", err)
-			}
-			if got != test.want {
-				t.Errorf("PINPrompt called %d times, want=%d", got, test.want)
-			}
+
+			_, err = s.Sign(rand.Reader, data[:], crypto.SHA256)
+			assert.NoError(t, err, "Failed to sign")
+
+			_, err = s.Sign(rand.Reader, data[:], crypto.SHA256)
+			assert.NoError(t, err, "Failed to sign")
+
+			assert.Equal(t, test.want, got, "PINPrompt called %d times, want=%d", got, test.want)
 		})
 	}
 }
@@ -108,35 +106,25 @@ func TestDecryptRSA(t *testing.T) {
 				PINPolicy:   PINPolicyNever,
 			}
 			pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
-			if err != nil {
-				t.Fatalf("generating key: %v", err)
-			}
+			require.NoError(t, err, "Failed to generate key")
+
 			pub, ok := pubKey.(*rsa.PublicKey)
-			if !ok {
-				t.Fatalf("public key is not an rsa key")
-			}
+			require.True(t, ok, "Public key is not an RSA key")
 
 			data := []byte("hello")
 			ct, err := rsa.EncryptPKCS1v15(rand.Reader, pub, data)
-			if err != nil {
-				t.Fatalf("encryption failed: %v", err)
-			}
+			require.NoError(t, err, "Failed to encrypt")
 
 			priv, err := c.PrivateKey(slot, pub, KeyAuth{})
-			if err != nil {
-				t.Fatalf("getting private key: %v", err)
-			}
+			require.NoError(t, err, "Failed to get private key")
+
 			d, ok := priv.(crypto.Decrypter)
-			if !ok {
-				t.Fatalf("private key didn't implement crypto.Decypter")
-			}
+			require.True(t, ok, "Private key didn't implement crypto.Decypter")
+
 			got, err := d.Decrypt(rand.Reader, ct, nil)
-			if err != nil {
-				t.Fatalf("decryption failed: %v", err)
-			}
-			if !bytes.Equal(data, got) {
-				t.Errorf("decrypt, got=%q, want=%q", got, data)
-			}
+			require.NoError(t, err, "Failed to decrypt")
+
+			assert.Equal(t, data, got, "Failed to decrypt, got=%q, want=%q", got, data)
 		})
 	}
 }
@@ -147,9 +135,8 @@ func TestStoreCertificate(t *testing.T) {
 	slot := SlotAuthentication
 
 	caPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generating ca private: %v", err)
-	}
+	require.NoError(t, err, "Failed to generating CA private key")
+
 	// Generate a self-signed certificate
 	caTmpl := &x509.Certificate{
 		Subject:               pkix.Name{CommonName: "my-ca"},
@@ -163,13 +150,10 @@ func TestStoreCertificate(t *testing.T) {
 			x509.KeyUsageCertSign,
 	}
 	caCertDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, caPriv.Public(), caPriv)
-	if err != nil {
-		t.Fatalf("generating self-signed certificate: %v", err)
-	}
+	require.NoError(t, err, "Failed to generate self-signed certificate")
+
 	caCert, err := x509.ParseCertificate(caCertDER)
-	if err != nil {
-		t.Fatalf("parsing ca cert: %v", err)
-	}
+	require.NoError(t, err, "Failed to parse CA cert")
 
 	key := Key{
 		Algorithm:   AlgorithmEC256,
@@ -177,9 +161,7 @@ func TestStoreCertificate(t *testing.T) {
 		PINPolicy:   PINPolicyNever,
 	}
 	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
-	if err != nil {
-		t.Fatalf("generating key: %v", err)
-	}
+	require.NoError(t, err, "Failed to generate key")
 
 	cliTmpl := &x509.Certificate{
 		Subject:      pkix.Name{CommonName: "my-client"},
@@ -190,23 +172,17 @@ func TestStoreCertificate(t *testing.T) {
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}
 	cliCertDER, err := x509.CreateCertificate(rand.Reader, cliTmpl, caCert, pub, caPriv)
-	if err != nil {
-		t.Fatalf("creating client cert: %v", err)
-	}
+	require.NoError(t, err, "Failed to create client certificate")
+
 	cliCert, err := x509.ParseCertificate(cliCertDER)
-	if err != nil {
-		t.Fatalf("parsing cli cert: %v", err)
-	}
-	if err := c.SetCertificate(DefaultManagementKey, slot, cliCert); err != nil {
-		t.Fatalf("storing client cert: %v", err)
-	}
+	require.NoError(t, err, "Failed to parse CLI certificate")
+
+	err = c.SetCertificate(DefaultManagementKey, slot, cliCert)
+	require.NoError(t, err, "Failed to store client certificate")
+
 	gotCert, err := c.Certificate(slot)
-	if err != nil {
-		t.Fatalf("getting client cert: %v", err)
-	}
-	if !bytes.Equal(gotCert.Raw, cliCert.Raw) {
-		t.Errorf("stored cert didn't match cert retrieved")
-	}
+	require.NoError(t, err, "Failed to get client certificate")
+	assert.Equal(t, cliCert.Raw, gotCert.Raw, "Stored certificate didn't match cert retrieved")
 }
 
 func TestGenerateKey(t *testing.T) {
@@ -250,9 +226,9 @@ func TestGenerateKey(t *testing.T) {
 				TouchPolicy: TouchPolicyNever,
 				PINPolicy:   PINPolicyNever,
 			}
-			if _, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, key); err != nil {
-				t.Errorf("generating key: %v", err)
-			}
+
+			_, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, key)
+			assert.NoError(t, err, "Failed to generate key")
 		})
 	}
 }
@@ -270,58 +246,47 @@ func TestPrivateKey(t *testing.T) {
 		PINPolicy:   PINPolicyNever,
 	}
 	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
-	if err != nil {
-		t.Fatalf("generating key: %v", err)
-	}
+	require.NoError(t, err, "Failed to generate key")
+
 	ecdsaPub, ok := pub.(*ecdsa.PublicKey)
-	if !ok {
-		t.Fatalf("public key is not an *ecdsa.PublicKey: %T", pub)
-	}
+	require.True(t, ok, "Public key is not an *ecdsa.PublicKey: %T", pub)
 
 	auth := KeyAuth{PIN: DefaultPIN}
 	priv, err := c.PrivateKey(slot, pub, auth)
-	if err != nil {
-		t.Fatalf("getting private key: %v", err)
-	}
+	require.NoError(t, err, "Failed to gett private key")
+
 	signer, ok := priv.(crypto.Signer)
-	if !ok {
-		t.Fatalf("private key doesn't implement crypto.Signer")
-	}
+	require.True(t, ok, "Private key doesn't implement crypto.Signer")
 
 	b := sha256.Sum256([]byte("hello"))
 	hash := b[:]
 	sig, err := signer.Sign(rand.Reader, hash, crypto.SHA256)
-	if err != nil {
-		t.Fatalf("signing failed: %v", err)
-	}
+	require.NoError(t, err, "Failed to sign")
 
 	var ecdsaSignature struct {
 		R, S *big.Int
 	}
-	if _, err := asn1.Unmarshal(sig, &ecdsaSignature); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if !ecdsa.Verify(ecdsaPub, hash, ecdsaSignature.R, ecdsaSignature.S) {
-		t.Fatalf("signature validation failed")
-	}
+
+	_, err = asn1.Unmarshal(sig, &ecdsaSignature)
+	require.NoError(t, err, "Failed to unmarshal")
+
+	ok = ecdsa.Verify(ecdsaPub, hash, ecdsaSignature.R, ecdsaSignature.S)
+	require.True(t, ok, "Failed to validate signature")
 }
 
 func TestPrivateKeyPINError(t *testing.T) {
-	alg := AlgorithmEC256
 	slot := SlotAuthentication
 
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
 	key := Key{
-		Algorithm:   alg,
+		Algorithm:   AlgorithmEC256,
 		TouchPolicy: TouchPolicyNever,
 		PINPolicy:   PINPolicyAlways,
 	}
 	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
-	if err != nil {
-		t.Fatalf("generating key: %v", err)
-	}
+	require.NoError(t, err, "Failed to generate key")
 
 	auth := KeyAuth{
 		PINPrompt: func() (string, error) {
@@ -330,19 +295,16 @@ func TestPrivateKeyPINError(t *testing.T) {
 	}
 
 	priv, err := c.PrivateKey(slot, pub, auth)
-	if err != nil {
-		t.Fatalf("getting private key: %v", err)
-	}
+	require.NoError(t, err, "Failed to get private key")
+
 	signer, ok := priv.(crypto.Signer)
-	if !ok {
-		t.Fatalf("private key doesn't implement crypto.Signer")
-	}
+	require.True(t, ok, "Private key doesn't implement crypto.Signer")
 
 	b := sha256.Sum256([]byte("hello"))
 	hash := b[:]
-	if _, err := signer.Sign(rand.Reader, hash, crypto.SHA256); err == nil {
-		t.Errorf("expected sign to fail with pin prompt that returned error")
-	}
+
+	_, err = signer.Sign(rand.Reader, hash, crypto.SHA256)
+	assert.Error(t, err, "Expected sign to fail with PIN prompt that returned error")
 }
 
 func TestVerify(t *testing.T) {
@@ -384,28 +346,21 @@ func TestVerify(t *testing.T) {
 
 	parseCert := func(cert string) (*x509.Certificate, error) {
 		block, _ := pem.Decode([]byte(cert))
-		if block == nil {
-			t.Fatalf("decoding PEM cert, empty block")
-		}
+		require.NotNil(t, block, "Decoding PEM cert, empty block")
+
 		return x509.ParseCertificate(block.Bytes)
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			deviceCert, err := parseCert(test.deviceCert)
-			if err != nil {
-				t.Fatalf("parsing device cert: %v", err)
-			}
+			require.NoError(t, err, "Failed to parse device cert")
 
 			keyCert, err := parseCert(test.keyCert)
-			if err != nil {
-				t.Fatalf("parsing key cert: %v", err)
-			}
+			require.NoError(t, err, "Failed to parse key cert")
 
 			_, err = Verify(deviceCert, keyCert)
-			if (err == nil) != test.ok {
-				t.Errorf("Verify returned %v, expected test outcome %v", err, test.ok)
-			}
+			assert.Equal(t, (err == nil), test.ok, "Verify returned %v, expected test outcome %v", err, test.ok)
 		})
 	}
 }
@@ -438,8 +393,8 @@ func ephemeralKey(t *testing.T, alg Algorithm) privateKey {
 	default:
 		t.Fatalf("ephemeral key: unknown algorithm %d", alg)
 	}
-	if err != nil {
-		t.Fatalf("ephemeral key: %v", err)
-	}
+
+	require.NoError(t, err, "Failed to generate ephemeral key")
+
 	return key
 }

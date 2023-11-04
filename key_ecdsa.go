@@ -59,7 +59,7 @@ func (k *ECDSAPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 		size := k.pub.Params().BitSize
 		switch size {
 		case 256:
-			alg = algECCP256
+			alg = algECS256
 		case 384:
 			alg = algECCP384
 		default:
@@ -97,7 +97,7 @@ func signECDSA(tx *scTx, slot Slot, pub *ecdsa.PublicKey, digest []byte) ([]byte
 	size := pub.Params().BitSize
 	switch size {
 	case 256:
-		alg = algECCP256
+		alg = algECS256
 	case 384:
 		alg = algECCP384
 	default:

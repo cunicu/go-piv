@@ -4,22 +4,24 @@
 package piv
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"errors"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 //nolint:gocognit
 func TestSlots(t *testing.T) {
 	c, closeCard := newTestCard(t)
-	if err := c.Reset(); err != nil {
-		t.Fatalf("resetting card: %v", err)
-	}
+
+	err := c.Reset()
+	require.NoError(t, err, "Failed to reset applet")
+
 	closeCard()
 
 	tests := []struct {
@@ -38,9 +40,8 @@ func TestSlots(t *testing.T) {
 			defer closeCard()
 
 			if supportsAttestation(c) {
-				if _, err := c.Attest(test.slot); err == nil || !errors.Is(err, ErrNotFound) {
-					t.Errorf("attest: got=%v, want=ErrNotFound", err)
-				}
+				_, err := c.Attest(test.slot)
+				assert.ErrorIs(t, err, ErrNotFound)
 			}
 
 			k := Key{
@@ -49,20 +50,15 @@ func TestSlots(t *testing.T) {
 				TouchPolicy: TouchPolicyNever,
 			}
 			pub, err := c.GenerateKey(DefaultManagementKey, test.slot, k)
-			if err != nil {
-				t.Fatalf("generating key on slot: %v", err)
-			}
+			require.NoError(t, err, "Failed to generate key on slot")
 
 			if supportsAttestation(c) {
-				if _, err := c.Attest(test.slot); err != nil {
-					t.Errorf("attest: %v", err)
-				}
+				_, err := c.Attest(test.slot)
+				assert.NoError(t, err, "Failed to attest")
 			}
 
 			priv, err := c.PrivateKey(test.slot, pub, KeyAuth{PIN: DefaultPIN})
-			if err != nil {
-				t.Fatalf("private key: %v", err)
-			}
+			require.NoError(t, err, "Failed to get private key")
 
 			tmpl := &x509.Certificate{
 				Subject:      pkix.Name{CommonName: "my-client"},
@@ -73,27 +69,21 @@ func TestSlots(t *testing.T) {
 				ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 			}
 			raw, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, pub, priv)
-			if err != nil {
-				t.Fatalf("signing self-signed certificate: %v", err)
-			}
-			cert, err := x509.ParseCertificate(raw)
-			if err != nil {
-				t.Fatalf("parse certificate: %v", err)
-			}
+			require.NoError(t, err, "Failed to sign self-signed certificate")
 
-			if _, err := c.Certificate(test.slot); err == nil || !errors.Is(err, ErrNotFound) {
-				t.Errorf("get certificate, got err=%v, want=ErrNotFound", err)
-			}
-			if err := c.SetCertificate(DefaultManagementKey, test.slot, cert); err != nil {
-				t.Fatalf("set certificate: %v", err)
-			}
+			cert, err := x509.ParseCertificate(raw)
+			require.NoError(t, err, "Failed to parse certificate")
+
+			_, err = c.Certificate(test.slot)
+			assert.ErrorIs(t, err, ErrNotFound)
+
+			err = c.SetCertificate(DefaultManagementKey, test.slot, cert)
+			require.NoError(t, err, "Failed to set certificate")
+
 			got, err := c.Certificate(test.slot)
-			if err != nil {
-				t.Fatalf("get certifiate: %v", err)
-			}
-			if !bytes.Equal(got.Raw, raw) {
-				t.Errorf("certificate from slot didn't match the certificate written")
-			}
+			require.NoError(t, err, "Failed to get certificate")
+
+			assert.Equal(t, raw, got.Raw, "Certificate from slot didn't match the certificate written")
 		})
 	}
 }
@@ -133,15 +123,9 @@ func TestParseSlot(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			slot, ok := parseSlot(test.cn)
-
-			if ok != test.ok {
-				t.Errorf("ok status returned %v, expected %v", ok, test.ok)
-			}
-
-			if slot != test.slot {
-				t.Errorf("returned slot %+v did not match expected %+v", slot, test.slot)
-			}
+			gotSlot, gotOk := parseSlot(test.cn)
+			assert.Equal(t, test.ok, gotOk)
+			assert.Equal(t, test.slot, gotSlot, "Returned slot %+v did not match expected %+v", gotSlot, test.slot)
 		})
 	}
 }
@@ -178,15 +162,11 @@ func TestRetiredKeyManagementSlot(t *testing.T) {
 			wantOk:   true,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotSlot, gotOk := RetiredKeyManagementSlot(tt.key)
-			if gotSlot != tt.wantSlot {
-				t.Errorf("RetiredKeyManagementSlot() got=%v, want=%v", gotSlot, tt.wantSlot)
-			}
-			if gotOk != tt.wantOk {
-				t.Errorf("RetiredKeyManagementSlot() got=%v, want=%v", gotOk, tt.wantOk)
-			}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotSlot, gotOk := RetiredKeyManagementSlot(test.key)
+			assert.Equal(t, test.wantSlot, gotSlot)
+			assert.Equal(t, test.wantOk, gotOk)
 		})
 	}
 }
