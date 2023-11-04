@@ -9,7 +9,7 @@ func supportsAttestation(c *Card) bool {
 	return supportsVersion(c.Version(), 4, 3, 0)
 }
 
-func TestYubiKeyAttestation(t *testing.T) {
+func TestAttestation(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 	key := Key{

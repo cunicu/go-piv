@@ -16,7 +16,7 @@ import (
 	"testing"
 )
 
-func TestYubiKeyECDSASharedKey(t *testing.T) {
+func TestECDSASharedKey(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 
@@ -153,7 +153,7 @@ func TestSetECDSAPrivateKey(t *testing.T) {
 	}
 }
 
-func TestYubiKeySignECDSA(t *testing.T) {
+func TestSignECDSA(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 

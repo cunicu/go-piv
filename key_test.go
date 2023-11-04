@@ -85,7 +85,7 @@ func TestPINPrompt(t *testing.T) {
 	}
 }
 
-func TestYubiKeyDecryptRSA(t *testing.T) {
+func TestDecryptRSA(t *testing.T) {
 	tests := []struct {
 		name string
 		alg  Algorithm
@@ -141,7 +141,7 @@ func TestYubiKeyDecryptRSA(t *testing.T) {
 	}
 }
 
-func TestYubiKeyStoreCertificate(t *testing.T) {
+func TestStoreCertificate(t *testing.T) {
 	c, closeCard := newTestCard(t)
 	defer closeCard()
 	slot := SlotAuthentication
@@ -209,7 +209,7 @@ func TestYubiKeyStoreCertificate(t *testing.T) {
 	}
 }
 
-func TestYubiKeyGenerateKey(t *testing.T) {
+func TestGenerateKey(t *testing.T) {
 	tests := []struct {
 		name string
 		alg  Algorithm
@@ -257,7 +257,7 @@ func TestYubiKeyGenerateKey(t *testing.T) {
 	}
 }
 
-func TestYubiKeyPrivateKey(t *testing.T) {
+func TestPrivateKey(t *testing.T) {
 	alg := AlgorithmEC256
 	slot := SlotAuthentication
 
@@ -306,7 +306,7 @@ func TestYubiKeyPrivateKey(t *testing.T) {
 	}
 }
 
-func TestYubiKeyPrivateKeyPINError(t *testing.T) {
+func TestPrivateKeyPINError(t *testing.T) {
 	alg := AlgorithmEC256
 	slot := SlotAuthentication
 
