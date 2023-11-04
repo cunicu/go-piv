@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// canModifyCard indicates whether the test running has constented to
+// canModifyCard indicates whether the test running has consented to
 // destroying data on YubiKeys connected to the system.
 //
 //nolint:gochecknoglobals
@@ -105,9 +105,9 @@ func TestMultipleConnections(t *testing.T) {
 		_, err = Open(card)
 		require.Error(t, err, "Expected second open operation to fail")
 
-		var serr scard.Error
-		require.ErrorAs(t, err, &serr, "Expected scard.Error, got %T", err)
-		require.ErrorIs(t, serr, scard.ErrSharingViolation, "Expected return code 0x8010000B (sharing vialation), got=0x%x", serr)
+		var sErr scard.Error
+		require.ErrorAs(t, err, &sErr, "Expected scard.Error, got %T", err)
+		require.ErrorIs(t, sErr, scard.ErrSharingViolation, "Expected return code 0x8010000B (sharing violation), got=0x%x", sErr)
 
 		return
 	}

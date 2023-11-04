@@ -119,7 +119,7 @@ func TestDecryptRSA(t *testing.T) {
 			require.NoError(t, err, "Failed to get private key")
 
 			d, ok := priv.(crypto.Decrypter)
-			require.True(t, ok, "Private key didn't implement crypto.Decypter")
+			require.True(t, ok, "Private key didn't implement crypto.Decrypter")
 
 			got, err := d.Decrypt(rand.Reader, ct, nil)
 			require.NoError(t, err, "Failed to decrypt")
@@ -253,7 +253,7 @@ func TestPrivateKey(t *testing.T) {
 
 	auth := KeyAuth{PIN: DefaultPIN}
 	priv, err := c.PrivateKey(slot, pub, auth)
-	require.NoError(t, err, "Failed to gett private key")
+	require.NoError(t, err, "Failed to get private key")
 
 	signer, ok := priv.(crypto.Signer)
 	require.True(t, ok, "Private key doesn't implement crypto.Signer")

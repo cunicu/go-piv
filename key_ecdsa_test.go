@@ -150,11 +150,11 @@ func TestSignECDSA(t *testing.T) {
 	require.NoError(t, err, "Failed to generate key")
 
 	pub, ok := pubKey.(*ecdsa.PublicKey)
-	require.True(t, ok, "public key is not an ecdsa key")
+	require.True(t, ok, "public key is not an ECDSA key")
 
 	data := sha256.Sum256([]byte("hello"))
 	priv, err := c.PrivateKey(slot, pub, KeyAuth{})
-	require.NoError(t, err, "Failed to gett private key")
+	require.NoError(t, err, "Failed to get private key")
 
 	s, ok := priv.(crypto.Signer)
 	require.True(t, ok, "expected private key to implement crypto.Signer")
