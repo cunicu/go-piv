@@ -1,9 +1,10 @@
+
 # SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
 # SPDX-License-Identifier: Apache-2.0
 
 # yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/github-workflow.json
 ---
-name: Build
+name: Test with virtual cards
 
 on:
   push:
@@ -12,71 +13,29 @@ on:
   pull_request:
 
 jobs:
-  build:
-    name: Build
+  test:
+    name: Test with Virtual Cards
+    runs-on: ubuntu-latest
 
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ ubuntu-latest, macOS-latest, windows-latest ]
+    services:
+      card:
+        image: registry.gitlab.com/hkos/virtual-piv/openfips201
+        volumes:
+        - /run/pcscd:/run/pcscd
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Install dependencies
-      if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get install -y
             libpcsclite-dev
-            pcscd
             pcsc-tools
 
-    - name: Setup Go
-      uses: actions/setup-go@v4
-      with:
-        go-version-file: go.mod
-        check-latest: true
+    - name: Check virtual card
+      run: pcsc_scan -vt2
 
-    - name: Lint
-      # TODO: golangci-lint v1.54 is currently broken on Windows?
-      if: matrix.os != 'windows-latest'
-      uses: golangci/golangci-lint-action@v3
-      with:
-        version: v1.54.0
-      continue-on-error: true
-
-    - name: Set up gotestfmt
-      run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
-
-    - name: Run Go tests
-      if: matrix.os == 'ubuntu-latest'
-      shell: bash
-      run: |
-        set -euo pipefail
-        go test \
-          -v \
-          -json \
-          -coverpkg ./... \
-          -tags ci \
-          -coverprofile cover.profile \
-          ./... 2>&1 | \
-        tee gotest.log | \
-        gotestfmt
-
-    - name: Upload test log
-      if: always() && matrix.os == 'ubuntu-latest'
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-log
-        path: gotest.log
-        if-no-files-found: error
-
-    - name: Build
-      if: matrix.os != 'ubuntu-latest'
-      run: go build .
-
-    - name: Report test coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        files: cover.profile
+    # - name: Setup Go
+    #   uses: actions/setup-go@v4
+    #   with:
+    #     go-version-file: go.mod
+    #     check-latest: true
