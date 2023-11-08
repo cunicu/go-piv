@@ -113,7 +113,7 @@ if err != nil {
     // ...
 }
 
-var newKey [24]byte
+var newKey ManagementKey
 if _, err := io.ReadFull(rand.Reader, newKey[:]); err != nil {
     // ...
 }
@@ -294,17 +294,17 @@ Non-YubiKey smart cards that implement the PIV standard are not officially suppo
 ## Testing
 
 Tests automatically find connected available YubiKeys, but won't modify the
-smart card without the `--reset-card` flag. To let the tests modify your
+smart card without the `TEST_DANGEROUS_WIPE_REAL_CARD=1` environment variable is set. To let the tests modify your
 YubiKey's PIV applet, run:
 
 ```shell
-go test -v ./piv --reset-card
+TEST_DANGEROUS_WIPE_REAL_CARD=1 go test -v ./piv
 ```
 
 Longer tests can be skipped with the `--test.short` flag.
 
 ```shell
-go test -v --short ./piv --reset-card
+TEST_DANGEROUS_WIPE_REAL_CARD=1  go test -v --short ./piv
 ```
 
 ## Why?
