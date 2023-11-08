@@ -10,6 +10,9 @@ import (
 	"io"
 	"math/big"
 
+	iso "cunicu.li/go-iso7816"
+	"cunicu.li/go-iso7816/encoding/tlv"
+
 	rsafork "cunicu.li/go-piv/internal/rsa"
 )
 
@@ -26,62 +29,61 @@ func (k *keyRSA) Public() crypto.PublicKey {
 }
 
 func (k *keyRSA) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	return k.auth.do(k.c, k.pp, func(tx *scTx) ([]byte, error) {
+	return k.auth.do(k.c, k.pp, func(tx *iso.Transaction) ([]byte, error) {
 		return signRSA(tx, rand, k.slot, k.pub, digest, opts)
 	})
 }
 
 func (k *keyRSA) Decrypt(_ io.Reader, msg []byte, _ crypto.DecrypterOpts) ([]byte, error) {
-	return k.auth.do(k.c, k.pp, func(tx *scTx) ([]byte, error) {
+	return k.auth.do(k.c, k.pp, func(tx *iso.Transaction) ([]byte, error) {
 		return decryptRSA(tx, k.slot, k.pub, msg)
 	})
 }
 
-func decodeRSAPublic(b []byte) (*rsa.PublicKey, error) {
+func decodeRSAPublic(tvs tlv.TagValues) (*rsa.PublicKey, error) {
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
-	mod, r, err := unmarshalASN1(b, 2, 0x01)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal modulus: %w", err)
+	mod, _, ok := tvs.Get(0x81)
+	if !ok {
+		return nil, fmt.Errorf("%w modulus", errUnmarshal)
 	}
-	exp, _, err := unmarshalASN1(r, 2, 0x02)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal exponent: %w", err)
+
+	exp, _, ok := tvs.Get(0x82)
+	if !ok {
+		return nil, fmt.Errorf("%w exponent", errUnmarshal)
 	}
+
 	var n, e big.Int
 	n.SetBytes(mod)
 	e.SetBytes(exp)
+
 	if !e.IsInt64() {
 		return nil, fmt.Errorf("%w: returned exponent too large: %s", errUnexpectedLength, e.String())
 	}
+
 	return &rsa.PublicKey{N: &n, E: int(e.Int64())}, nil
 }
 
-func decryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, error) {
-	alg, err := rsaAlg(pub)
+func decryptRSA(tx *iso.Transaction, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, error) {
+	alg, err := algRSA(pub)
 	if err != nil {
 		return nil, err
 	}
-	cmd := apdu{
-		instruction: insAuthenticate,
-		param1:      alg,
-		param2:      byte(slot.Key),
-		data: marshalASN1(0x7c,
-			append([]byte{0x82, 0x00},
-				marshalASN1(0x81, data)...)),
-	}
-	resp, err := tx.Transmit(cmd)
+
+	resp, err := sendTLV(tx, iso.InsGeneralAuthenticate, byte(alg), slot.Key,
+		tlv.New(0x7c,
+			tlv.New(0x82),
+			tlv.New(0x81, data),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 
-	sig, _, err := unmarshalASN1(resp, 1, 0x1c) // 0x7c
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	decrypted, _, ok := resp.GetChild(0x7c, 0x82)
+	if !ok {
+		return nil, fmt.Errorf("%w response signature", errUnmarshal)
 	}
-	decrypted, _, err := unmarshalASN1(sig, 2, 0x02) // 0x82
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response signature: %w", err)
-	}
+
 	// Decrypted blob contains a bunch of random data. Look for a NULL byte which
 	// indicates where the plain text starts.
 	for i := 2; i+1 < len(decrypted); i++ {
@@ -89,16 +91,17 @@ func decryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, e
 			return decrypted[i+1:], nil
 		}
 	}
+
 	return nil, errInvalidPKCS1Padding
 }
 
-func signRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func signRSA(tx *iso.Transaction, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	hash := opts.HashFunc()
 	if hash.Size() != len(digest) {
 		return nil, fmt.Errorf("%w: input must be a hashed message", errUnexpectedLength)
 	}
 
-	alg, err := rsaAlg(pub)
+	alg, err := algRSA(pub)
 	if err != nil {
 		return nil, err
 	}
@@ -109,10 +112,12 @@ func signRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest []b
 		if err != nil {
 			return nil, err
 		}
+
 		em, err := rsafork.EMSAPSSEncode(digest, pub, salt, hash.New())
 		if err != nil {
 			return nil, err
 		}
+
 		data = em
 	} else {
 		prefix, ok := hashPrefixes[hash]
@@ -142,38 +147,49 @@ func signRSA(tx *scTx, rand io.Reader, slot Slot, pub *rsa.PublicKey, digest []b
 	}
 
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=117
-	cmd := apdu{
-		instruction: insAuthenticate,
-		param1:      alg,
-		param2:      byte(slot.Key),
-		data: marshalASN1(0x7c,
-			append([]byte{0x82, 0x00},
-				marshalASN1(0x81, data)...)),
-	}
-	resp, err := tx.Transmit(cmd)
+	resp, err := sendTLV(tx, iso.InsGeneralAuthenticate, byte(alg), slot.Key,
+		tlv.New(0x7c,
+			tlv.New(0x82),
+			tlv.New(0x81, data),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 
-	sig, _, err := unmarshalASN1(resp, 1, 0x1c) // 0x7c
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	pkcs1v15Sig, _, ok := resp.GetChild(0x7c, 0x82) // 0x82
+	if !ok {
+		return nil, fmt.Errorf("%w response signature", errUnmarshal)
 	}
-	pkcs1v15Sig, _, err := unmarshalASN1(sig, 2, 0x02) // 0x82
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response signature: %w", err)
-	}
+
 	return pkcs1v15Sig, nil
 }
 
-func rsaAlg(pub *rsa.PublicKey) (byte, error) {
+func algRSA(pub *rsa.PublicKey) (Algorithm, error) {
 	size := pub.N.BitLen()
 	switch size {
 	case 1024:
-		return algRSA1024, nil
+		return AlgRSA1024, nil
+
 	case 2048:
-		return algRSA2048, nil
+		return AlgRSA2048, nil
+
 	default:
 		return 0, fmt.Errorf("%w: %d", errUnsupportedKeySize, size)
 	}
+}
+
+// PKCS#1 v15 is largely informed by the standard library
+// https://github.com/golang/go/blob/go1.13.5/src/crypto/rsa/pkcs1v15.go
+
+//nolint:gochecknoglobals
+var hashPrefixes = map[crypto.Hash][]byte{
+	crypto.MD5:       {0x30, 0x20, 0x30, 0x0c, 0x06, 0x08, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x02, 0x05, 0x05, 0x00, 0x04, 0x10},
+	crypto.SHA1:      {0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14},
+	crypto.SHA224:    {0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c},
+	crypto.SHA256:    {0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20},
+	crypto.SHA384:    {0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30},
+	crypto.SHA512:    {0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40},
+	crypto.MD5SHA1:   {}, // A special TLS case which doesn't use an ASN1 prefix.
+	crypto.RIPEMD160: {0x30, 0x20, 0x30, 0x08, 0x06, 0x06, 0x28, 0xcf, 0x06, 0x03, 0x00, 0x31, 0x04, 0x14},
 }

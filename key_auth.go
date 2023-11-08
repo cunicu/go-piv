@@ -3,7 +3,11 @@
 
 package piv
 
-import "fmt"
+import (
+	"fmt"
+
+	iso "cunicu.li/go-iso7816"
+)
 
 // KeyAuth is used to authenticate against the card on each signing  and
 // decryption request.
@@ -11,6 +15,7 @@ type KeyAuth struct {
 	// PIN, if provided, is a static PIN used to authenticate against the key.
 	// If provided, PINPrompt is ignored.
 	PIN string
+
 	// PINPrompt can be used to interactively request the PIN from the user. The
 	// method is only called when needed. For example, if a key specifies
 	// PINPolicyOnce, PINPrompt will only be called once per card struct.
@@ -48,12 +53,14 @@ func (k KeyAuth) authTx(c *Card, pp PINPolicy) error {
 	if pin == "" {
 		return errMissingPIN
 	}
+
 	return login(c.tx, pin)
 }
 
-func (k KeyAuth) do(c *Card, pp PINPolicy, f func(tx *scTx) ([]byte, error)) ([]byte, error) {
+func (k KeyAuth) do(c *Card, pp PINPolicy, f func(tx *iso.Transaction) ([]byte, error)) ([]byte, error) {
 	if err := k.authTx(c, pp); err != nil {
 		return nil, err
 	}
+
 	return f(c.tx)
 }

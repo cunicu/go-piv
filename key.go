@@ -12,6 +12,8 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+
+	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
 var (
@@ -36,15 +38,14 @@ var (
 	errUnsupportedOrigin        = errors.New("unsupported origin")
 	errPointsNotOnCurve         = errors.New("resulting points are not on curve")
 	errPointsNotCompressed      = errors.New("points were not uncompressed")
-	errUnexpectedClassTag       = errors.New("unexpected class/tag")
 )
 
-// unsupportedCurveError is used when a key has an unsupported curve
-type unsupportedCurveError struct {
+// UnsupportedCurveError is used when a key has an unsupported curve
+type UnsupportedCurveError struct {
 	curve int
 }
 
-func (e unsupportedCurveError) Error() string {
+func (e UnsupportedCurveError) Error() string {
 	return fmt.Sprintf("unsupported curve: %d", e.curve)
 }
 
@@ -53,11 +54,12 @@ type Slot struct {
 	// Key is a reference for a key type.
 	//
 	// See: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=32
-	Key uint32
+	Key byte
+
 	// Object is a reference for data object.
 	//
 	// See: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=30
-	Object uint32
+	Object Object
 }
 
 //nolint:gochecknoglobals
@@ -66,18 +68,6 @@ var (
 	extIDSerialNumber    = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 4, 1, 41482, 3, 7})
 	extIDKeyPolicy       = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 4, 1, 41482, 3, 8})
 	extIDFormFactor      = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 4, 1, 41482, 3, 9})
-)
-
-// Version encodes a major, minor, and patch version.
-type Version struct {
-	Major int
-	Minor int
-	Patch int
-}
-
-const (
-	tagPINPolicy   = 0xaa
-	tagTouchPolicy = 0xab
 )
 
 // Key is used for key generation and holds different options for the key.
@@ -100,75 +90,73 @@ type Key struct {
 
 // GenerateKey generates an asymmetric key on the card, returning the key's
 // public key.
-func (c *Card) GenerateKey(key [24]byte, slot Slot, opts Key) (crypto.PublicKey, error) {
-	if err := authenticate(c.tx, key, c.rand); err != nil {
+func (c *Card) GenerateKey(key ManagementKey, slot Slot, opts Key) (crypto.PublicKey, error) {
+	if err := c.authenticate(key); err != nil {
 		return nil, fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
 
-	alg, ok := algorithmsMap[opts.Algorithm]
-	if !ok {
-		return nil, errUnsupportedAlgorithm
-	}
 	tp, ok := touchPolicyMap[opts.TouchPolicy]
 	if !ok {
 		return nil, errUnsupportedTouchPolicy
 	}
+
 	pp, ok := pinPolicyMap[opts.PINPolicy]
 	if !ok {
 		return nil, errUnsupportedPinPolicy
 	}
+
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
-	cmd := apdu{
-		instruction: insGenerateAsymmetric,
-		param2:      byte(slot.Key),
-		data: []byte{
-			0xac,
-			0x09, // length of remaining data
-			algTag, 0x01, alg,
-			tagPINPolicy, 0x01, pp,
-			tagTouchPolicy, 0x01, tp,
-		},
-	}
-	resp, err := c.tx.Transmit(cmd)
+	resp, err := sendTLV(c.tx, insGenerateAsymmetric, 0, slot.Key,
+		tlv.New(0xac,
+			tlv.New(tagAlg, byte(opts.Algorithm)),
+			tlv.New(tagPINPolicy, pp),
+			tlv.New(tagTouchPolicy, tp),
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
-	obj, _, err := unmarshalASN1(resp, 1, 0x49)
-	if err != nil {
+	pub, _, ok := resp.Get(0x7f49)
+	if !ok {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	return decodePublic(obj, opts.Algorithm)
+	return decodePublic(pub, opts.Algorithm)
 }
 
-func decodePublic(b []byte, alg Algorithm) (crypto.PublicKey, error) {
-	var curve elliptic.Curve
+func decodePublic(b []byte, alg Algorithm) (pub crypto.PublicKey, err error) {
+	tvs, err := tlv.DecodeBER(b)
+	if err != nil {
+		return nil, err
+	}
+
 	switch alg {
-	case AlgorithmRSA1024, AlgorithmRSA2048:
-		pub, err := decodeRSAPublic(b)
-		if err != nil {
+	case AlgRSA1024, AlgRSA2048:
+		if pub, err = decodeRSAPublic(tvs); err != nil {
 			return nil, fmt.Errorf("failed to decode RSA public key: %w", err)
 		}
-		return pub, nil
-	case AlgorithmEC256:
-		curve = elliptic.P256()
-	case AlgorithmEC384:
-		curve = elliptic.P384()
-	case AlgorithmEd25519:
-		pub, err := decodeEd25519Public(b)
-		if err != nil {
+
+	case AlgECCP256:
+		if pub, err = decodeECPublic(tvs, elliptic.P256()); err != nil {
+			return nil, fmt.Errorf("failed to decode elliptic curve public key: %w", err)
+		}
+
+	case AlgECCP384:
+		if pub, err = decodeECPublic(tvs, elliptic.P384()); err != nil {
+			return nil, fmt.Errorf("failed to decode elliptic curve public key: %w", err)
+		}
+
+	case AlgEd25519:
+		if pub, err = decodeEd25519Public(tvs); err != nil {
 			return nil, fmt.Errorf("failed to decode ed25519 public key: %w", err)
 		}
-		return pub, nil
+
 	default:
 		return nil, errUnsupportedAlgorithm
 	}
-	pub, err := decodeECPublic(b, curve)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode elliptic curve public key: %w", err)
-	}
+
 	return pub, nil
 }
 
@@ -202,11 +190,14 @@ func (c *Card) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) (cry
 
 	switch pub := public.(type) {
 	case *ecdsa.PublicKey:
-		return &ECDSAPrivateKey{c, slot, pub, auth, pp}, nil
+		return &ECPPPrivateKey{c, slot, pub, auth, pp}, nil
+
 	case ed25519.PublicKey:
 		return &keyEd25519{c, slot, pub, auth, pp}, nil
+
 	case *rsa.PublicKey:
 		return &keyRSA{c, slot, pub, auth, pp}, nil
+
 	default:
 		return nil, fmt.Errorf("%w: %T", errUnsupportedKeyType, public)
 	}
@@ -222,125 +213,88 @@ func (c *Card) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) (cry
 // Keys generated outside of the YubiKey should not be considered hardware-backed,
 // as there's no way to prove the key wasn't copied, exfiltrated, or replaced with malicious
 // material before being imported.
-func (c *Card) SetPrivateKeyInsecure(key [24]byte, slot Slot, private crypto.PrivateKey, policy Key) error {
+func (c *Card) SetPrivateKeyInsecure(key ManagementKey, slot Slot, private crypto.PrivateKey, policy Key) error {
 	// Reference implementation
 	// https://github.com/Yubico/yubico-piv-tool/blob/671a5740ef09d6c5d9d33f6e5575450750b58bde/lib/ykpiv.c#L1812
 
-	params := make([][]byte, 0)
+	if err := c.authenticate(key); err != nil {
+		return fmt.Errorf("failed to authenticate with management key: %w", err)
+	}
 
-	var paramTag byte
+	tp, ok := touchPolicyMap[policy.TouchPolicy]
+	if !ok {
+		return errUnsupportedTouchPolicy
+	}
+
+	pp, ok := pinPolicyMap[policy.PINPolicy]
+	if !ok {
+		return errUnsupportedPinPolicy
+	}
+
+	tvs := tlv.TagValues{
+		tlv.New(tagPINPolicy, pp),
+		tlv.New(tagTouchPolicy, tp),
+	}
+
+	pad := func(l int, b []byte) (k []byte) {
+		k = make([]byte, l)
+		p := len(k) - len(b)
+		copy(k[p:], b)
+		return k
+	}
+
 	var elemLen int
-
 	switch priv := private.(type) {
 	case *rsa.PrivateKey:
-		paramTag = 0x01
 		switch priv.N.BitLen() {
 		case 1024:
-			policy.Algorithm = AlgorithmRSA1024
+			policy.Algorithm = AlgRSA1024
 			elemLen = 64
+
 		case 2048:
-			policy.Algorithm = AlgorithmRSA2048
+			policy.Algorithm = AlgRSA2048
 			elemLen = 128
+
 		default:
 			return errUnsupportedKeySize
 		}
 
 		priv.Precompute()
 
-		params = append(params, priv.Primes[0].Bytes())        // P
-		params = append(params, priv.Primes[1].Bytes())        // Q
-		params = append(params, priv.Precomputed.Dp.Bytes())   // dP
-		params = append(params, priv.Precomputed.Dq.Bytes())   // dQ
-		params = append(params, priv.Precomputed.Qinv.Bytes()) // Qinv
+		tvs = append(tvs,
+			tlv.New(0x01, pad(elemLen, priv.Primes[0].Bytes())),        // P
+			tlv.New(0x02, pad(elemLen, priv.Primes[1].Bytes())),        // Q
+			tlv.New(0x03, pad(elemLen, priv.Precomputed.Dp.Bytes())),   // dP
+			tlv.New(0x04, pad(elemLen, priv.Precomputed.Dq.Bytes())),   // dQ
+			tlv.New(0x05, pad(elemLen, priv.Precomputed.Qinv.Bytes())), // Qinv
+		)
+
 	case *ecdsa.PrivateKey:
-		paramTag = 0x6
 		size := priv.PublicKey.Params().BitSize
 		switch size {
 		case 256:
-			policy.Algorithm = AlgorithmEC256
+			policy.Algorithm = AlgECCP256
 			elemLen = 32
+
 		case 384:
-			policy.Algorithm = AlgorithmEC384
+			policy.Algorithm = AlgECCP384
 			elemLen = 48
+
 		default:
-			return unsupportedCurveError{curve: size}
+			return UnsupportedCurveError{curve: size}
 		}
 
-		// S value
-		privateKey := make([]byte, elemLen)
-		valueBytes := priv.D.Bytes()
-		padding := len(privateKey) - len(valueBytes)
-		copy(privateKey[padding:], valueBytes)
+		tvs = append(tvs, tlv.New(0x06, pad(elemLen, priv.D.Bytes()))) // S value
 
-		params = append(params, privateKey)
 	default:
 		return errUnsupportedKeyType
 	}
 
-	elemLenASN1 := marshalASN1Length(uint64(elemLen))
-
-	tags := make([]byte, 0)
-	for i, param := range params {
-		tag := paramTag + byte(i)
-		tags = append(tags, tag)
-		tags = append(tags, elemLenASN1...)
-
-		padding := elemLen - len(param)
-		param = append(make([]byte, padding), param...)
-		tags = append(tags, param...)
-	}
-
-	if err := authenticate(c.tx, key, c.rand); err != nil {
-		return fmt.Errorf("failed to authenticate with management key: %w", err)
-	}
-
-	return importKey(c.tx, tags, slot, policy)
-}
-
-func importKey(tx *scTx, tags []byte, slot Slot, o Key) error {
-	alg, ok := algorithmsMap[o.Algorithm]
-	if !ok {
-		return errUnsupportedAlgorithm
-	}
-	tp, ok := touchPolicyMap[o.TouchPolicy]
-	if !ok {
-		return errUnsupportedTouchPolicy
-	}
-	pp, ok := pinPolicyMap[o.PINPolicy]
-	if !ok {
-		return errUnsupportedPinPolicy
-	}
-
 	// This command is a Yubico PIV extension.
 	// https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html
-	cmd := apdu{
-		instruction: insImportKey,
-		param1:      alg,
-		param2:      byte(slot.Key),
-		data: append(tags, []byte{
-			tagPINPolicy, 0x01, pp,
-			tagTouchPolicy, 0x01, tp,
-		}...),
-	}
-
-	if _, err := tx.Transmit(cmd); err != nil {
+	if _, err := sendTLV(c.tx, insImportKey, byte(policy.Algorithm), slot.Key, tvs...); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
 
 	return nil
-}
-
-// PKCS#1 v15 is largely informed by the standard library
-// https://github.com/golang/go/blob/go1.13.5/src/crypto/rsa/pkcs1v15.go
-
-//nolint:gochecknoglobals
-var hashPrefixes = map[crypto.Hash][]byte{
-	crypto.MD5:       {0x30, 0x20, 0x30, 0x0c, 0x06, 0x08, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x02, 0x05, 0x05, 0x00, 0x04, 0x10},
-	crypto.SHA1:      {0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14},
-	crypto.SHA224:    {0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c},
-	crypto.SHA256:    {0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20},
-	crypto.SHA384:    {0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30},
-	crypto.SHA512:    {0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40},
-	crypto.MD5SHA1:   {}, // A special TLS case which doesn't use an ASN1 prefix.
-	crypto.RIPEMD160: {0x30, 0x20, 0x30, 0x08, 0x06, 0x06, 0x28, 0xcf, 0x06, 0x03, 0x00, 0x31, 0x04, 0x14},
 }

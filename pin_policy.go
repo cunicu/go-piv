@@ -6,6 +6,8 @@ package piv
 import (
 	"errors"
 	"fmt"
+
+	iso "cunicu.li/go-iso7816"
 )
 
 //nolint:gochecknoglobals
@@ -39,31 +41,38 @@ const (
 )
 
 func pinPolicy(c *Card, slot Slot) (PINPolicy, error) {
-	if supportsVersion(c.Version(), 5, 3, 0) {
-		info, err := c.KeyInfo(slot)
+	v, _ := iso.ParseVersion("4.3.0")
+	if !v.Less(c.Version()) {
+		md, err := c.Metadata(slot)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get key info: %w", err)
 		}
-		return info.PINPolicy, nil
+
+		return md.PINPolicy, nil
 	}
+
 	cert, err := c.Attest(slot)
 	if err != nil {
-		var e *apduError
-		if errors.As(err, &e) && e.sw1 == 0x6d && e.sw2 == 0x00 {
+		var e *iso.Code
+		if errors.As(err, &e) && *e == iso.ErrUnsupportedInstruction {
 			// Attestation cert command not supported, probably an older YubiKey.
 			// Guess PINPolicyAlways.
 			//
 			// See https://cunicu.li/go-piv/issues/55
 			return PINPolicyAlways, nil
 		}
+
 		return 0, fmt.Errorf("failed to get attestation cert: %w", err)
 	}
+
 	a, err := parseAttestation(cert)
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse attestation cert: %w", err)
 	}
+
 	if _, ok := pinPolicyMap[a.PINPolicy]; ok {
 		return a.PINPolicy, nil
 	}
+
 	return PINPolicyOnce, nil
 }

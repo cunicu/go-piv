@@ -4,12 +4,13 @@
 package piv
 
 import (
-	"bytes"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
 	"fmt"
+
+	iso "cunicu.li/go-iso7816"
 )
 
 // Prefix in the x509 Subject Common Name for YubiKey attestations
@@ -21,9 +22,11 @@ const yubikeySubjectCNPrefix = "YubiKey PIV Attestation "
 // for more information.
 type Attestation struct {
 	// Version of the YubiKey's firmware.
-	Version Version
+	Version iso.Version
+
 	// Serial is the YubiKey's serial number.
 	Serial uint32
+
 	// FormFactor indicates the physical type of the YubiKey.
 	//
 	// FormFactor may be empty FormFactor(0) for some YubiKeys.
@@ -46,7 +49,7 @@ func (a *Attestation) addExt(e pkix.Extension) error {
 		if len(e.Value) != 3 {
 			return fmt.Errorf("%w for firmware version, got=%dB, want=3B", errUnexpectedLength, len(e.Value))
 		}
-		a.Version = Version{
+		a.Version = iso.Version{
 			Major: int(e.Value[0]),
 			Minor: int(e.Value[1]),
 			Patch: int(e.Value[2]),
@@ -165,7 +168,7 @@ func parseAttestation(slotCert *x509.Certificate) (*Attestation, error) {
 // AttestationCertificate returns the YubiKey's attestation certificate, which
 // is unique to the key and signed by Yubico.
 func (c *Card) AttestationCertificate() (*x509.Certificate, error) {
-	return c.Certificate(slotAttestation)
+	return c.Certificate(SlotAttestation)
 }
 
 // Attest generates a certificate for a key, signed by the YubiKey's attestation
@@ -181,35 +184,24 @@ func (c *Card) AttestationCertificate() (*x509.Certificate, error) {
 //
 // If the slot doesn't have a key, the returned error wraps ErrNotFound.
 func (c *Card) Attest(slot Slot) (cert *x509.Certificate, err error) {
-	if cert, err = attest(c.tx, slot); err == nil {
-		return cert, nil
-	}
-	var e *apduError
-	if errors.As(err, &e) && e.sw1 == 0x6A && e.sw2 == 0x80 {
-		return nil, ErrNotFound
-	}
-	return nil, err
-}
-
-func attest(tx *scTx, slot Slot) (*x509.Certificate, error) {
-	cmd := apdu{
-		instruction: insAttest,
-		param1:      byte(slot.Key),
-	}
-	resp, err := tx.Transmit(cmd)
+	resp, err := send(c.tx, insAttest, slot.Key, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
-	if bytes.HasPrefix(resp, []byte{0x70}) {
-		b, _, err := unmarshalASN1(resp, 0, 0x10)
-		if err != nil { // tag 0x70
-			return nil, fmt.Errorf("failed to unmarshal certificate: %w", err)
-		}
-		resp = b
+
+	var e *iso.Code
+	if errors.As(err, &e) && *e == iso.ErrIncorrectData {
+		return nil, ErrNotFound
 	}
-	cert, err := x509.ParseCertificate(resp)
-	if err != nil {
+
+	if cert, err = x509.ParseCertificate(resp); err != nil {
 		return nil, fmt.Errorf("%w: %w", errParseCert, err)
 	}
+
 	return cert, nil
+}
+
+func (c *Card) SupportsAttestation() bool {
+	v, _ := iso.ParseVersion("4.3.0")
+	return !c.version.Less(v)
 }

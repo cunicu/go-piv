@@ -4,7 +4,6 @@
 package piv
 
 import (
-	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
@@ -17,13 +16,6 @@ import (
 
 //nolint:gocognit
 func TestSlots(t *testing.T) {
-	c, closeCard := newTestCard(t)
-
-	err := c.Reset()
-	require.NoError(t, err, "Failed to reset applet")
-
-	closeCard()
-
 	tests := []struct {
 		name string
 		slot Slot
@@ -36,59 +28,63 @@ func TestSlots(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c, closeCard := newTestCard(t)
-			defer closeCard()
+			withCard(t, true, false, nil, func(t *testing.T, c *Card) {
+				if c.SupportsAttestation() {
+					_, err := c.Attest(test.slot)
+					assert.ErrorIs(t, err, ErrNotFound)
+				}
+				k := Key{
+					Algorithm:   AlgECCP256,
+					PINPolicy:   PINPolicyNever,
+					TouchPolicy: TouchPolicyNever,
+				}
+				pub, err := c.GenerateKey(DefaultManagementKey, test.slot, k)
+				require.NoError(t, err, "Failed to generate key on slot")
 
-			if supportsAttestation(c) {
-				_, err := c.Attest(test.slot)
+				if c.SupportsAttestation() {
+					_, err := c.Attest(test.slot)
+					assert.NoError(t, err, "Failed to attest")
+				}
+
+				priv, err := c.PrivateKey(test.slot, pub, KeyAuth{PIN: DefaultPIN})
+				require.NoError(t, err, "Failed to get private key")
+
+				tmpl := &x509.Certificate{
+					Subject:      pkix.Name{CommonName: "my-client"},
+					SerialNumber: big.NewInt(1),
+					KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+					ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+				}
+
+				// Certificate must be deterministic for
+				// reproducible tests
+				tmpl.NotBefore, _ = time.Parse(time.DateOnly, "2020-01-01")
+				tmpl.NotAfter, _ = time.Parse(time.DateOnly, "2030-01-01")
+
+				raw, err := x509.CreateCertificate(c.Rand, tmpl, tmpl, pub, priv)
+				require.NoError(t, err, "Failed to sign self-signed certificate")
+
+				cert, err := x509.ParseCertificate(raw)
+				require.NoError(t, err, "Failed to parse certificate")
+
+				_, err = c.Certificate(test.slot)
 				assert.ErrorIs(t, err, ErrNotFound)
-			}
 
-			k := Key{
-				Algorithm:   AlgorithmEC256,
-				PINPolicy:   PINPolicyNever,
-				TouchPolicy: TouchPolicyNever,
-			}
-			pub, err := c.GenerateKey(DefaultManagementKey, test.slot, k)
-			require.NoError(t, err, "Failed to generate key on slot")
+				err = c.SetCertificate(DefaultManagementKey, test.slot, cert)
+				require.NoError(t, err, "Failed to set certificate")
 
-			if supportsAttestation(c) {
-				_, err := c.Attest(test.slot)
-				assert.NoError(t, err, "Failed to attest")
-			}
+				got, err := c.Certificate(test.slot)
+				require.NoError(t, err, "Failed to get certificate")
 
-			priv, err := c.PrivateKey(test.slot, pub, KeyAuth{PIN: DefaultPIN})
-			require.NoError(t, err, "Failed to get private key")
-
-			tmpl := &x509.Certificate{
-				Subject:      pkix.Name{CommonName: "my-client"},
-				SerialNumber: big.NewInt(1),
-				NotBefore:    time.Now(),
-				NotAfter:     time.Now().Add(time.Hour),
-				KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-				ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-			}
-			raw, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, pub, priv)
-			require.NoError(t, err, "Failed to sign self-signed certificate")
-
-			cert, err := x509.ParseCertificate(raw)
-			require.NoError(t, err, "Failed to parse certificate")
-
-			_, err = c.Certificate(test.slot)
-			assert.ErrorIs(t, err, ErrNotFound)
-
-			err = c.SetCertificate(DefaultManagementKey, test.slot, cert)
-			require.NoError(t, err, "Failed to set certificate")
-
-			got, err := c.Certificate(test.slot)
-			require.NoError(t, err, "Failed to get certificate")
-
-			assert.Equal(t, raw, got.Raw, "Certificate from slot didn't match the certificate written")
+				assert.Equal(t, raw, got.Raw, "Certificate from slot didn't match the certificate written")
+			})
 		})
 	}
 }
 
 func TestParseSlot(t *testing.T) {
+	retiredSlot89, _ := SlotRetiredKeyManagement(0x89)
+
 	tests := []struct {
 		name string
 		cn   string
@@ -96,28 +92,28 @@ func TestParseSlot(t *testing.T) {
 		slot Slot
 	}{
 		{
-			name: "Missing Yubico PIV Prefix",
+			name: "Invalid/Missing Yubico PIV Prefix",
 			cn:   "invalid",
 			ok:   false,
 			slot: Slot{},
 		},
 		{
-			name: "Invalid Slot Name",
+			name: "Invalid/Slot Name",
 			cn:   yubikeySubjectCNPrefix + "xy",
 			ok:   false,
 			slot: Slot{},
 		},
 		{
-			name: "Valid -- SlotAuthentication",
+			name: "Valid/SlotAuthentication",
 			cn:   yubikeySubjectCNPrefix + "9a",
 			ok:   true,
 			slot: SlotAuthentication,
 		},
 		{
-			name: "Valid -- Retired Management Key",
+			name: "Valid/Retired Management Key",
 			cn:   yubikeySubjectCNPrefix + "89",
 			ok:   true,
-			slot: retiredKeyManagementSlots[uint32(137)],
+			slot: retiredSlot89,
 		},
 	}
 
@@ -131,9 +127,12 @@ func TestParseSlot(t *testing.T) {
 }
 
 func TestRetiredKeyManagementSlot(t *testing.T) {
+	firstRetiredSlot, _ := SlotRetiredKeyManagement(0x82)
+	lastRetiredSlot, _ := SlotRetiredKeyManagement(0x95)
+
 	tests := []struct {
 		name     string
-		key      uint32
+		key      byte
 		wantSlot Slot
 		wantOk   bool
 	}{
@@ -152,19 +151,19 @@ func TestRetiredKeyManagementSlot(t *testing.T) {
 		{
 			name:     "First retired slot key",
 			key:      0x82,
-			wantSlot: Slot{0x82, 0x5fc10d},
+			wantSlot: firstRetiredSlot,
 			wantOk:   true,
 		},
 		{
 			name:     "Last retired slot key",
 			key:      0x95,
-			wantSlot: Slot{0x95, 0x5fc120},
+			wantSlot: lastRetiredSlot,
 			wantOk:   true,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			gotSlot, gotOk := RetiredKeyManagementSlot(test.key)
+			gotSlot, gotOk := SlotRetiredKeyManagement(test.key)
 			assert.Equal(t, test.wantSlot, gotSlot)
 			assert.Equal(t, test.wantOk, gotOk)
 		})

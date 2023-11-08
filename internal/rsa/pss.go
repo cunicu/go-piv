@@ -147,14 +147,17 @@ func incCounter(c *[4]byte) {
 // PSS signature.
 func NewSalt(rand io.Reader, pub *rsa.PublicKey, hash crypto.Hash, opts *rsa.PSSOptions) ([]byte, error) {
 	saltLength := opts.SaltLength
+
 	switch saltLength {
 	case rsa.PSSSaltLengthAuto:
 		saltLength = (pub.N.BitLen()-1+7)/8 - 2 - hash.Size()
 		if saltLength < 0 {
 			return nil, rsa.ErrMessageTooLong
 		}
+
 	case rsa.PSSSaltLengthEqualsHash:
 		saltLength = hash.Size()
+
 	default:
 		// If we get here saltLength is either > 0 or < -1, in the
 		// latter case we fail out.
@@ -162,9 +165,11 @@ func NewSalt(rand io.Reader, pub *rsa.PublicKey, hash crypto.Hash, opts *rsa.PSS
 			return nil, errInvalidSaltLen
 		}
 	}
+
 	salt := make([]byte, saltLength)
 	if _, err := io.ReadFull(rand, salt); err != nil {
 		return nil, err
 	}
+
 	return salt, nil
 }
