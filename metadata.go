@@ -4,172 +4,100 @@
 package piv
 
 import (
-	"bytes"
-	"crypto/rand"
-	"encoding/asn1"
-	"errors"
+	"crypto"
 	"fmt"
+
+	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
-// Metadata holds protected metadata. This is primarily used by YubiKey manager
-// to implement PIN protect management keys, storing management keys on the card
-// guarded by the PIN.
+// Metadata holds unprotected metadata about a key slot.
 type Metadata struct {
-	// ManagementKey is the management key stored directly on the YubiKey.
-	ManagementKey *[24]byte
-
-	// raw, if not nil, is the full bytes
-	raw []byte
+	Algorithm   Algorithm
+	PINPolicy   PINPolicy
+	TouchPolicy TouchPolicy
+	Origin      Origin
+	PublicKey   crypto.PublicKey
 }
 
-func (m *Metadata) marshal() ([]byte, error) {
-	if m.raw == nil {
-		if m.ManagementKey == nil {
-			return []byte{0x88, 0x00}, nil
+//nolint:gocognit
+func (ki *Metadata) unmarshal(tvs tlv.TagValues) (err error) {
+	// Algorithm
+	if v, _, ok := tvs.Get(0x01); ok {
+		if len(v) != 1 {
+			return fmt.Errorf("%w for algorithm", errUnexpectedLength)
 		}
-		return append([]byte{
-			0x88,
-			26,
-			0x89,
-			24,
-		}, m.ManagementKey[:]...), nil
+
+		ki.Algorithm = Algorithm(v[0])
 	}
 
-	if m.ManagementKey == nil {
-		return m.raw, nil
+	// PIN & Touch Policy
+	if v, _, ok := tvs.Get(0x02); ok {
+		if len(v) != 2 {
+			return fmt.Errorf("%w for pin and touch policy", errUnexpectedLength)
+		}
+
+		if ki.PINPolicy, ok = pinPolicyMapInv[v[0]]; !ok {
+			return errUnsupportedPinPolicy
+		}
+
+		if ki.TouchPolicy, ok = touchPolicyMapInv[v[1]]; !ok {
+			return errUnsupportedTouchPolicy
+		}
 	}
 
-	var metadata asn1.RawValue
-	if _, err := asn1.Unmarshal(m.raw, &metadata); err != nil {
-		return nil, fmt.Errorf("failed to update metadata: %w", err)
-	}
-	if !bytes.HasPrefix(metadata.FullBytes, []byte{0x88}) {
-		return nil, fmt.Errorf("%w: 0x88", errExpectedTag)
-	}
-	raw := metadata.Bytes
+	// Origin
+	if v, _, ok := tvs.Get(0x03); ok {
+		if len(v) != 1 {
+			return fmt.Errorf("%w for origin", errUnexpectedLength)
+		}
 
-	metadata.Bytes = nil
-	metadata.FullBytes = nil
+		if ki.Origin, ok = originMapInv[v[0]]; !ok {
+			return errUnsupportedOrigin
+		}
+	}
 
-	for len(raw) > 0 {
-		var (
-			err error
-			v   asn1.RawValue
-		)
-		raw, err = asn1.Unmarshal(raw, &v)
+	// Public Key
+	if v, _, ok := tvs.Get(0x04); ok {
+		ki.PublicKey, err = decodePublic(v, ki.Algorithm)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal metadata field: %w", err)
+			return fmt.Errorf("failed to parse public key: %w", err)
 		}
+	}
 
-		if bytes.HasPrefix(v.FullBytes, []byte{0x89}) {
-			continue
-		}
-		metadata.Bytes = append(metadata.Bytes, v.FullBytes...)
-	}
-	metadata.Bytes = append(metadata.Bytes, 0x89, 24)
-	metadata.Bytes = append(metadata.Bytes, m.ManagementKey[:]...)
-	return asn1.Marshal(metadata)
-}
+	// TODO: According to the Yubico website, we get two more fields,
+	// if we pass 0x80 or 0x81 as slots:
+	//     1. Default value (for PIN/PUK and management key): Whether the
+	//        default value is used.
+	//     2. Retries (for PIN/PUK): The number of retries remaining
+	// However, it seems the reference implementation does not expect
+	// these and can not parse them out:
+	// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-2.3.1/lib/util.c#L1529
+	// For now, we just ignore them.
 
-func (m *Metadata) unmarshal(b []byte) error {
-	m.raw = b
-	var md asn1.RawValue
-	if _, err := asn1.Unmarshal(b, &md); err != nil {
-		return err
-	}
-	if !bytes.HasPrefix(md.FullBytes, []byte{0x88}) {
-		return fmt.Errorf("%w: 0x88", errExpectedTag)
-	}
-	d := md.Bytes
-	for len(d) > 0 {
-		var (
-			err error
-			v   asn1.RawValue
-		)
-		d, err = asn1.Unmarshal(d, &v)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal metadata field: %w", err)
-		}
-		if !bytes.HasPrefix(v.FullBytes, []byte{0x89}) {
-			continue
-		}
-		// 0x89 indicates key
-		if len(v.Bytes) != 24 {
-			return fmt.Errorf("%w for management key: got=%dB, want=24B", errUnexpectedLength, len(v.Bytes))
-		}
-		var key [24]byte
-		copy(key[:], v.Bytes)
-		m.ManagementKey = &key
-	}
+	// Default Value
+	// if _, v, ok := tvs.Get(0x05); ok {
+	// }
+
+	// Retries
+	// if _, v, ok := tvs.Get(0x06); ok {
+	// }
+
 	return nil
 }
 
-// Metadata returns protected data stored on the card. This can be used to
-// retrieve PIN protected management keys.
-func (c *Card) Metadata(pin string) (*Metadata, error) {
-	// NOTE: for some reason this action requires the PIN to be authenticated on
-	// the same transaction. It doesn't work otherwise.
-	if err := login(c.tx, pin); err != nil {
-		return nil, fmt.Errorf("failed to authenticate with PIN: %w", err)
-	}
-	cmd := apdu{
-		instruction: insGetData,
-		param1:      0x3f,
-		param2:      0xff,
-		data: []byte{
-			0x5c, // Tag list
-			0x03,
-			0x5f,
-			0xc1,
-			0x09,
-		},
-	}
-	resp, err := c.tx.Transmit(cmd)
+// Metadata returns public information about the given key slot. It is only
+// supported by YubiKeys with a version >= 5.3.0.
+func (c *Card) Metadata(slot Slot) (*Metadata, error) {
+	// https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html#_get_metadata
+	resp, err := sendTLV(c.tx, insGetMetadata, 0x00, slot.Key)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return &Metadata{}, nil
-		}
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
-	obj, _, err := unmarshalASN1(resp, 1, 0x13) // tag 0x53
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-	m := &Metadata{}
-	if err := m.unmarshal(obj); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal protected metadata: %w", err)
-	}
-	return m, nil
-}
 
-// SetMetadata sets PIN protected metadata on the key. This is primarily to
-// store the management key on the smart card instead of managing the PIN and
-// management key separately.
-func (c *Card) SetMetadata(key [24]byte, m *Metadata) error {
-	data, err := m.marshal()
-	if err != nil {
-		return fmt.Errorf("failed to encode metadata: %w", err)
+	ki := &Metadata{}
+	if err := ki.unmarshal(resp); err != nil {
+		return nil, err
 	}
-	data = append([]byte{
-		0x5c, // Tag list
-		0x03,
-		0x5f,
-		0xc1,
-		0x09,
-	}, marshalASN1(0x53, data)...)
-	cmd := apdu{
-		instruction: insPutData,
-		param1:      0x3f,
-		param2:      0xff,
-		data:        data,
-	}
-	// NOTE: for some reason this action requires the management key authenticated
-	// on the same transaction. It doesn't work otherwise.
-	if err := authenticate(c.tx, key, rand.Reader); err != nil {
-		return fmt.Errorf("failed to authenticate with key: %w", err)
-	}
-	if _, err := c.tx.Transmit(cmd); err != nil {
-		return fmt.Errorf("failed to execute command: %w", err)
-	}
-	return nil
+
+	return ki, nil
 }

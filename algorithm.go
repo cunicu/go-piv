@@ -3,28 +3,17 @@
 
 package piv
 
-//nolint:gochecknoglobals
-var (
-	algorithmsMap = map[Algorithm]byte{
-		AlgorithmEC256:   algECS256,
-		AlgorithmEC384:   algECCP384,
-		AlgorithmEd25519: algEd25519,
-		AlgorithmRSA1024: algRSA1024,
-		AlgorithmRSA2048: algRSA2048,
-	}
+type algorithmType byte
 
-	algorithmsMapInv = map[byte]Algorithm{
-		algECS256:  AlgorithmEC256,
-		algECCP384: AlgorithmEC384,
-		algEd25519: AlgorithmEd25519,
-		algRSA1024: AlgorithmRSA1024,
-		algRSA2048: AlgorithmRSA2048,
-	}
+const (
+	AlgTypeRSA algorithmType = iota + 1
+	AlgTypeECCP
+	AlgTypeEd25519
 )
 
 // Algorithm represents a specific algorithm and bit size supported by the PIV
 // specification.
-type Algorithm int
+type Algorithm byte
 
 // Algorithms supported by this package. Note that not all cards will support
 // every algorithm.
@@ -33,9 +22,46 @@ type Algorithm int
 //
 // For algorithm discovery, see: https://github.com/ericchiang/piv-go/issues/1
 const (
-	AlgorithmEC256 Algorithm = iota + 1
-	AlgorithmEC384
-	AlgorithmEd25519
-	AlgorithmRSA1024
-	AlgorithmRSA2048
+	Alg3DES    Algorithm = 0x03
+	AlgRSA1024 Algorithm = 0x06
+	AlgRSA2048 Algorithm = 0x07
+	AlgECCP256 Algorithm = 0x11
+	AlgECCP384 Algorithm = 0x14
+
+	// Non-standard; as implemented by SoloKeys. Chosen for low probability of eventual
+	// clashes, if and when PIV standard adds Ed25519 support
+	AlgEd25519 Algorithm = 0x22
 )
+
+func (a Algorithm) algType() algorithmType {
+	switch a {
+	case AlgRSA1024, AlgRSA2048:
+		return AlgTypeRSA
+
+	case AlgECCP256, AlgECCP384:
+		return AlgTypeECCP
+
+	case AlgEd25519:
+		return AlgTypeEd25519
+
+	default:
+		return 0
+	}
+}
+
+func (a Algorithm) bits() int {
+	switch a {
+	case AlgRSA1024:
+		return 1024
+	case AlgRSA2048:
+		return 2048
+
+	case AlgECCP256:
+		return 256
+	case AlgECCP384:
+		return 384
+
+	default:
+		return 0
+	}
+}

@@ -6,6 +6,8 @@ package piv
 import (
 	"crypto/x509"
 	"fmt"
+
+	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
 // Certificate returns the certificate object stored in a given slot.
@@ -13,71 +15,54 @@ import (
 // If a certificate hasn't been set in the provided slot, the returned error
 // wraps ErrNotFound.
 func (c *Card) Certificate(slot Slot) (*x509.Certificate, error) {
-	cmd := apdu{
-		instruction: insGetData,
-		param1:      0x3f,
-		param2:      0xff,
-		data: []byte{
-			0x5c, // Tag list
-			0x03, // Length of tag
-			byte(slot.Object >> 16),
-			byte(slot.Object >> 8),
-			byte(slot.Object),
-		},
-	}
-	resp, err := c.tx.Transmit(cmd)
+	resp, err := sendTLV(c.tx, insGetData, 0x3f, 0xff, slot.Object.TagValue())
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=85
-	obj, _, err := unmarshalASN1(resp, 1, 0x13) // tag 0x53
+
+	data, _, ok := resp.Get(0x53)
+	if !ok {
+		return nil, errUnmarshal
+	}
+
+	tvsCert, err := tlv.DecodeBER(data)
 	if err != nil {
+		return nil, errUnmarshal
+	}
+
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=85
+	certDER, _, ok := tvsCert.Get(0x70)
+	if !ok {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
-	certDER, _, err := unmarshalASN1(obj, 1, 0x10) // tag 0x70
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal certificate: %w", err)
-	}
+
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errParseCert, err)
 	}
+
 	return cert, nil
 }
 
 // SetCertificate stores a certificate object in the provided slot. Setting a
 // certificate isn't required to use the associated key for signing or
 // decryption.
-func (c *Card) SetCertificate(key [24]byte, slot Slot, cert *x509.Certificate) error {
-	if err := authenticate(c.tx, key, c.rand); err != nil {
+func (c *Card) SetCertificate(key ManagementKey, slot Slot, cert *x509.Certificate) error {
+	if err := c.authenticate(key); err != nil {
 		return fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
-	return storeCertificate(c.tx, slot, cert)
-}
 
-func storeCertificate(tx *scTx, slot Slot, cert *x509.Certificate) error {
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=40
-	data := marshalASN1(0x70, cert.Raw)
-	// "for a certificate encoded in uncompressed form CertInfo shall be 0x00"
-	data = append(data, marshalASN1(0x71, []byte{0x00})...)
-	// Error Detection Code
-	data = append(data, marshalASN1(0xfe, nil)...)
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=94
-	data = append([]byte{
-		0x5c, // Tag list
-		0x03, // Length of tag
-		byte(slot.Object >> 16),
-		byte(slot.Object >> 8),
-		byte(slot.Object),
-	}, marshalASN1(0x53, data)...)
-	cmd := apdu{
-		instruction: insPutData,
-		param1:      0x3f,
-		param2:      0xff,
-		data:        data,
-	}
-	if _, err := tx.Transmit(cmd); err != nil {
+	if _, err := sendTLV(c.tx, insPutData, 0x3f, 0xff,
+		slot.Object.TagValue(),
+		tlv.New(0x53,
+			// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=40
+			tlv.New(tagCertificate, cert.Raw),
+			tlv.New(tagCertInfo, 0x00), // "for a certificate encoded in uncompressed form CertInfo shall be 0x00"
+			tlv.New(tagErrorDetectionCode),
+		),
+	); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
+
 	return nil
 }

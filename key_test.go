@@ -6,9 +6,6 @@ package piv
 import (
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -20,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"cunicu.li/go-iso7816/filter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -43,44 +41,43 @@ func TestPINPrompt(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c, closeCard := newTestCard(t)
-			defer closeCard()
+			withCard(t, false, false, nil, func(t *testing.T, c *Card) {
+				k := Key{
+					Algorithm:   AlgECCP256,
+					PINPolicy:   test.policy,
+					TouchPolicy: TouchPolicyNever,
+				}
+				pub, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, k)
+				require.NoError(t, err, "Failed to generate key on slot")
 
-			k := Key{
-				Algorithm:   AlgorithmEC256,
-				PINPolicy:   test.policy,
-				TouchPolicy: TouchPolicyNever,
-			}
-			pub, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, k)
-			require.NoError(t, err, "Failed to generate key on slot")
+				got := 0
+				auth := KeyAuth{
+					PINPrompt: func() (string, error) {
+						got++
+						return DefaultPIN, nil
+					},
+				}
 
-			got := 0
-			auth := KeyAuth{
-				PINPrompt: func() (string, error) {
-					got++
-					return DefaultPIN, nil
-				},
-			}
+				if !c.SupportsAttestation() {
+					auth.PINPolicy = test.policy
+				}
 
-			if !supportsAttestation(c) {
-				auth.PINPolicy = test.policy
-			}
+				priv, err := c.PrivateKey(SlotAuthentication, pub, auth)
+				require.NoError(t, err, "Failed to build private key")
 
-			priv, err := c.PrivateKey(SlotAuthentication, pub, auth)
-			require.NoError(t, err, "Failed to build private key")
+				s, ok := priv.(crypto.Signer)
+				require.True(t, ok, "Expected crypto.Signer: got=%T", priv)
 
-			s, ok := priv.(crypto.Signer)
-			require.True(t, ok, "Expected crypto.Signer: got=%T", priv)
+				data := sha256.Sum256([]byte("foo"))
 
-			data := sha256.Sum256([]byte("foo"))
+				_, err = s.Sign(c.Rand, data[:], crypto.SHA256)
+				assert.NoError(t, err, "Failed to sign")
 
-			_, err = s.Sign(rand.Reader, data[:], crypto.SHA256)
-			assert.NoError(t, err, "Failed to sign")
+				_, err = s.Sign(c.Rand, data[:], crypto.SHA256)
+				assert.NoError(t, err, "Failed to sign")
 
-			_, err = s.Sign(rand.Reader, data[:], crypto.SHA256)
-			assert.NoError(t, err, "Failed to sign")
-
-			assert.Equal(t, test.want, got, "PINPrompt called %d times, want=%d", got, test.want)
+				assert.Equal(t, test.want, got, "PINPrompt called %d times, want=%d", got, test.want)
+			})
 		})
 	}
 }
@@ -91,100 +88,110 @@ func TestDecryptRSA(t *testing.T) {
 		alg  Algorithm
 		long bool
 	}{
-		{"rsa1024", AlgorithmRSA1024, false},
-		{"rsa2048", AlgorithmRSA2048, true},
+		{"RSA/1024", AlgRSA1024, false},
+		{"RSA/2048", AlgRSA2048, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.long && testing.Short() {
-				t.Skip("skipping test in short mode")
-			}
-			c, closeCard := newTestCard(t)
-			defer closeCard()
-			slot := SlotAuthentication
-			key := Key{
-				Algorithm:   test.alg,
-				TouchPolicy: TouchPolicyNever,
-				PINPolicy:   PINPolicyNever,
-			}
-			pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
-			require.NoError(t, err, "Failed to generate key")
+			withCard(t, false, test.long, nil, func(t *testing.T, c *Card) {
+				slot := SlotAuthentication
+				key := Key{
+					Algorithm:   test.alg,
+					TouchPolicy: TouchPolicyNever,
+					PINPolicy:   PINPolicyNever,
+				}
 
-			pub, ok := pubKey.(*rsa.PublicKey)
-			require.True(t, ok, "Public key is not an RSA key")
+				pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
+				require.NoError(t, err, "Failed to generate key")
 
-			data := []byte("hello")
-			ct, err := rsa.EncryptPKCS1v15(rand.Reader, pub, data)
-			require.NoError(t, err, "Failed to encrypt")
+				pub, ok := pubKey.(*rsa.PublicKey)
+				require.True(t, ok, "Public key is not an RSA key")
 
-			priv, err := c.PrivateKey(slot, pub, KeyAuth{})
-			require.NoError(t, err, "Failed to get private key")
+				data := []byte("hello")
+				ct, err := rsa.EncryptPKCS1v15(c.Rand, pub, data)
+				require.NoError(t, err, "Failed to encrypt")
 
-			d, ok := priv.(crypto.Decrypter)
-			require.True(t, ok, "Private key didn't implement crypto.Decrypter")
+				priv, err := c.PrivateKey(slot, pub, KeyAuth{})
+				require.NoError(t, err, "Failed to get private key")
 
-			got, err := d.Decrypt(rand.Reader, ct, nil)
-			require.NoError(t, err, "Failed to decrypt")
+				d, ok := priv.(crypto.Decrypter)
+				require.True(t, ok, "Private key didn't implement crypto.Decrypter")
 
-			assert.Equal(t, data, got, "Failed to decrypt, got=%q, want=%q", got, data)
+				got, err := d.Decrypt(c.Rand, ct, nil)
+				require.NoError(t, err, "Failed to decrypt")
+
+				assert.Equal(t, data, got, "Failed to decrypt, got=%q, want=%q", got, data)
+			})
 		})
 	}
 }
 
 func TestStoreCertificate(t *testing.T) {
-	c, closeCard := newTestCard(t)
-	defer closeCard()
-	slot := SlotAuthentication
+	withCard(t, false, false, nil, func(t *testing.T, c *Card) {
+		slot := SlotAuthentication
 
-	caPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err, "Failed to generating CA private key")
+		caPriv := testKey(t, AlgTypeECCP, 256)
 
-	// Generate a self-signed certificate
-	caTmpl := &x509.Certificate{
-		Subject:               pkix.Name{CommonName: "my-ca"},
-		SerialNumber:          big.NewInt(100),
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage: x509.KeyUsageKeyEncipherment |
-			x509.KeyUsageDigitalSignature |
-			x509.KeyUsageCertSign,
-	}
-	caCertDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, caPriv.Public(), caPriv)
-	require.NoError(t, err, "Failed to generate self-signed certificate")
+		// Generate a self-signed certificate
+		caTmpl := &x509.Certificate{
+			Subject: pkix.Name{
+				CommonName: "my-ca",
+			},
+			SerialNumber:          big.NewInt(100),
+			BasicConstraintsValid: true,
+			IsCA:                  true,
+			KeyUsage: x509.KeyUsageKeyEncipherment |
+				x509.KeyUsageDigitalSignature |
+				x509.KeyUsageCertSign,
+		}
 
-	caCert, err := x509.ParseCertificate(caCertDER)
-	require.NoError(t, err, "Failed to parse CA cert")
+		// Certificate must be deterministic for
+		// reproducible tests
+		caTmpl.NotBefore, _ = time.Parse(time.DateOnly, "2020-01-01")
+		caTmpl.NotAfter, _ = time.Parse(time.DateOnly, "2030-01-01")
 
-	key := Key{
-		Algorithm:   AlgorithmEC256,
-		TouchPolicy: TouchPolicyNever,
-		PINPolicy:   PINPolicyNever,
-	}
-	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
-	require.NoError(t, err, "Failed to generate key")
+		caCertDER, err := x509.CreateCertificate(c.Rand, caTmpl, caTmpl, caPriv.Public(), caPriv)
+		require.NoError(t, err, "Failed to generate self-signed certificate")
 
-	cliTmpl := &x509.Certificate{
-		Subject:      pkix.Name{CommonName: "my-client"},
-		SerialNumber: big.NewInt(101),
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-	}
-	cliCertDER, err := x509.CreateCertificate(rand.Reader, cliTmpl, caCert, pub, caPriv)
-	require.NoError(t, err, "Failed to create client certificate")
+		caCert, err := x509.ParseCertificate(caCertDER)
+		require.NoError(t, err, "Failed to parse CA cert")
 
-	cliCert, err := x509.ParseCertificate(cliCertDER)
-	require.NoError(t, err, "Failed to parse CLI certificate")
+		key := Key{
+			Algorithm:   AlgECCP256,
+			TouchPolicy: TouchPolicyNever,
+			PINPolicy:   PINPolicyNever,
+		}
 
-	err = c.SetCertificate(DefaultManagementKey, slot, cliCert)
-	require.NoError(t, err, "Failed to store client certificate")
+		pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
+		require.NoError(t, err, "Failed to generate key")
 
-	gotCert, err := c.Certificate(slot)
-	require.NoError(t, err, "Failed to get client certificate")
-	assert.Equal(t, cliCert.Raw, gotCert.Raw, "Stored certificate didn't match cert retrieved")
+		cliTmpl := &x509.Certificate{
+			Subject: pkix.Name{
+				CommonName: "my-client",
+			},
+			SerialNumber: big.NewInt(101),
+			KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		}
+
+		// Certificate must be deterministic for
+		// reproducible tests
+		cliTmpl.NotBefore, _ = time.Parse(time.DateOnly, "2020-01-01")
+		cliTmpl.NotAfter, _ = time.Parse(time.DateOnly, "2030-01-01")
+
+		cliCertDER, err := x509.CreateCertificate(c.Rand, cliTmpl, caCert, pub, caPriv)
+		require.NoError(t, err, "Failed to create client certificate")
+
+		cliCert, err := x509.ParseCertificate(cliCertDER)
+		require.NoError(t, err, "Failed to parse CLI certificate")
+
+		err = c.SetCertificate(DefaultManagementKey, slot, cliCert)
+		require.NoError(t, err, "Failed to store client certificate")
+
+		gotCert, err := c.Certificate(slot)
+		require.NoError(t, err, "Failed to get client certificate")
+		assert.Equal(t, cliCert.Raw, gotCert.Raw, "Stored certificate didn't match cert retrieved")
+	})
 }
 
 func TestGenerateKey(t *testing.T) {
@@ -192,150 +199,145 @@ func TestGenerateKey(t *testing.T) {
 		name string
 		alg  Algorithm
 		bits int
-		long bool // Does the key generation take a long time?
+		long bool
 	}{
 		{
-			name: "ec_256",
-			alg:  AlgorithmEC256,
+			name: "EC/P256",
+			alg:  AlgECCP256,
 		},
 		{
-			name: "ec_384",
-			alg:  AlgorithmEC384,
+			name: "EC/P384",
+			alg:  AlgECCP384,
 		},
 		{
-			name: "rsa_1024",
-			alg:  AlgorithmRSA1024,
+			name: "RSA/1024",
+			alg:  AlgRSA1024,
 		},
 		{
-			name: "rsa_2048",
-			alg:  AlgorithmRSA2048,
+			name: "RSA/2048",
+			alg:  AlgRSA2048,
 			long: true,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.long && testing.Short() {
-				t.Skip("skipping test in short mode")
-			}
-			c, closeCard := newTestCard(t)
-			defer closeCard()
-			if test.alg == AlgorithmEC384 {
-				testRequiresVersion(t, c, 4, 3, 0)
+			var flt filter.Filter
+			if test.alg == AlgECCP384 {
+				flt = SupportsAlgorithmEC384
 			}
 
-			key := Key{
-				Algorithm:   test.alg,
-				TouchPolicy: TouchPolicyNever,
-				PINPolicy:   PINPolicyNever,
-			}
+			withCard(t, false, test.long, flt, func(t *testing.T, c *Card) {
+				key := Key{
+					Algorithm:   test.alg,
+					TouchPolicy: TouchPolicyNever,
+					PINPolicy:   PINPolicyNever,
+				}
 
-			_, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, key)
-			assert.NoError(t, err, "Failed to generate key")
+				_, err := c.GenerateKey(DefaultManagementKey, SlotAuthentication, key)
+				assert.NoError(t, err, "Failed to generate key")
+			})
 		})
 	}
 }
 
 func TestPrivateKey(t *testing.T) {
-	alg := AlgorithmEC256
 	slot := SlotAuthentication
 
-	c, closeCard := newTestCard(t)
-	defer closeCard()
+	withCard(t, false, false, nil, func(t *testing.T, c *Card) {
+		key := Key{
+			Algorithm:   AlgECCP256,
+			TouchPolicy: TouchPolicyNever,
+			PINPolicy:   PINPolicyNever,
+		}
+		pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
+		require.NoError(t, err, "Failed to generate key")
 
-	key := Key{
-		Algorithm:   alg,
-		TouchPolicy: TouchPolicyNever,
-		PINPolicy:   PINPolicyNever,
-	}
-	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
-	require.NoError(t, err, "Failed to generate key")
+		ecdsaPub, ok := pub.(*ecdsa.PublicKey)
+		require.True(t, ok, "Public key is not an *ecdsa.PublicKey: %T", pub)
 
-	ecdsaPub, ok := pub.(*ecdsa.PublicKey)
-	require.True(t, ok, "Public key is not an *ecdsa.PublicKey: %T", pub)
+		auth := KeyAuth{PIN: DefaultPIN}
+		priv, err := c.PrivateKey(slot, pub, auth)
+		require.NoError(t, err, "Failed to get private key")
 
-	auth := KeyAuth{PIN: DefaultPIN}
-	priv, err := c.PrivateKey(slot, pub, auth)
-	require.NoError(t, err, "Failed to get private key")
+		signer, ok := priv.(crypto.Signer)
+		require.True(t, ok, "Private key doesn't implement crypto.Signer")
 
-	signer, ok := priv.(crypto.Signer)
-	require.True(t, ok, "Private key doesn't implement crypto.Signer")
+		b := sha256.Sum256([]byte("hello"))
+		hash := b[:]
+		sig, err := signer.Sign(c.Rand, hash, crypto.SHA256)
+		require.NoError(t, err, "Failed to sign")
 
-	b := sha256.Sum256([]byte("hello"))
-	hash := b[:]
-	sig, err := signer.Sign(rand.Reader, hash, crypto.SHA256)
-	require.NoError(t, err, "Failed to sign")
+		var ecdsaSignature struct {
+			R, S *big.Int
+		}
 
-	var ecdsaSignature struct {
-		R, S *big.Int
-	}
+		_, err = asn1.Unmarshal(sig, &ecdsaSignature)
+		require.NoError(t, err, "Failed to unmarshal")
 
-	_, err = asn1.Unmarshal(sig, &ecdsaSignature)
-	require.NoError(t, err, "Failed to unmarshal")
-
-	ok = ecdsa.Verify(ecdsaPub, hash, ecdsaSignature.R, ecdsaSignature.S)
-	require.True(t, ok, "Failed to validate signature")
+		ok = ecdsa.Verify(ecdsaPub, hash, ecdsaSignature.R, ecdsaSignature.S)
+		require.True(t, ok, "Failed to validate signature")
+	})
 }
 
 func TestPrivateKeyPINError(t *testing.T) {
 	slot := SlotAuthentication
 
-	c, closeCard := newTestCard(t)
-	defer closeCard()
+	withCard(t, false, false, nil, func(t *testing.T, c *Card) {
+		key := Key{
+			Algorithm:   AlgECCP256,
+			TouchPolicy: TouchPolicyNever,
+			PINPolicy:   PINPolicyAlways,
+		}
+		pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
+		require.NoError(t, err, "Failed to generate key")
 
-	key := Key{
-		Algorithm:   AlgorithmEC256,
-		TouchPolicy: TouchPolicyNever,
-		PINPolicy:   PINPolicyAlways,
-	}
-	pub, err := c.GenerateKey(DefaultManagementKey, slot, key)
-	require.NoError(t, err, "Failed to generate key")
+		auth := KeyAuth{
+			PINPrompt: func() (string, error) {
+				return "", errors.New("test error") //nolint:goerr113
+			},
+		}
 
-	auth := KeyAuth{
-		PINPrompt: func() (string, error) {
-			return "", errors.New("test error") //nolint:goerr113
-		},
-	}
+		priv, err := c.PrivateKey(slot, pub, auth)
+		require.NoError(t, err, "Failed to get private key")
 
-	priv, err := c.PrivateKey(slot, pub, auth)
-	require.NoError(t, err, "Failed to get private key")
+		signer, ok := priv.(crypto.Signer)
+		require.True(t, ok, "Private key doesn't implement crypto.Signer")
 
-	signer, ok := priv.(crypto.Signer)
-	require.True(t, ok, "Private key doesn't implement crypto.Signer")
+		b := sha256.Sum256([]byte("hello"))
+		hash := b[:]
 
-	b := sha256.Sum256([]byte("hello"))
-	hash := b[:]
-
-	_, err = signer.Sign(rand.Reader, hash, crypto.SHA256)
-	assert.Error(t, err, "Expected sign to fail with PIN prompt that returned error")
+		_, err = signer.Sign(c.Rand, hash, crypto.SHA256)
+		assert.Error(t, err, "Expected sign to fail with PIN prompt that returned error")
+	})
 }
 
 var (
 	//go:embed certs/test/ValidChain.crt
-	validChainCert string
+	validChainCert []byte
 	//go:embed certs/test/ValidChain.key
-	validChainKey string
+	validChainKey []byte
 
 	//go:embed certs/test/ValidChain2018.crt
-	validChain2018Cert string
+	validChain2018Cert []byte
 	//go:embed certs/test/ValidChain2018.key
-	validChain2018Key string
+	validChain2018Key []byte
 
 	//go:embed certs/test/InvalidChain.crt
-	invalidChainCert string
+	invalidChainCert []byte
 	//go:embed certs/test/InvalidChain.key
-	invalidChainKey string
+	invalidChainKey []byte
 
 	//go:embed certs/test/InvalidChain2.crt
-	invalidChain2Cert string
+	invalidChain2Cert []byte
 	//go:embed certs/test/InvalidChain2.key
-	invalidChain2Key string
+	invalidChain2Key []byte
 )
 
 func TestVerify(t *testing.T) {
 	tests := []struct {
 		name       string
-		deviceCert string
-		keyCert    string
+		deviceCert []byte
+		keyCert    []byte
 		ok         bool
 	}{
 		{
@@ -368,8 +370,8 @@ func TestVerify(t *testing.T) {
 		},
 	}
 
-	parseCert := func(cert string) (*x509.Certificate, error) {
-		block, _ := pem.Decode([]byte(cert))
+	parseCert := func(cert []byte) (*x509.Certificate, error) {
+		block, _ := pem.Decode(cert)
 		require.NotNil(t, block, "Decoding PEM cert, empty block")
 
 		return x509.ParseCertificate(block.Bytes)
@@ -396,29 +398,74 @@ type privateKey interface {
 	Public() crypto.PublicKey
 }
 
-// ephemeralKey generates an ephemeral key for the given algorithm.
-func ephemeralKey(t *testing.T, alg Algorithm) privateKey {
-	t.Helper()
-	var (
-		key privateKey
-		err error
-	)
-	switch alg {
-	case AlgorithmEC256:
-		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	case AlgorithmEC384:
-		key, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	case AlgorithmEd25519:
-		_, key, err = ed25519.GenerateKey(rand.Reader)
-	case AlgorithmRSA1024:
-		key, err = rsa.GenerateKey(rand.Reader, 1024) //nolint:gosec
-	case AlgorithmRSA2048:
-		key, err = rsa.GenerateKey(rand.Reader, 2048)
-	default:
-		t.Fatalf("ephemeral key: unknown algorithm %d", alg)
-	}
+var (
+	//go:embed testdata/EC_224.key
+	testKeyEC224 []byte
+	//go:embed testdata/EC_256.key
+	testKeyEC256 []byte
+	//go:embed testdata/EC_384.key
+	testKeyEC384 []byte
+	//go:embed testdata/EC_521.key
+	testKeyEC521 []byte
 
-	require.NoError(t, err, "Failed to generate ephemeral key")
+	//go:embed testdata/RSA_512.key
+	testKeyRSA512 []byte
+	//go:embed testdata/RSA_1024.key
+	testKeyRSA1024 []byte
+	//go:embed testdata/RSA_2048.key
+	testKeyRSA2048 []byte
+	//go:embed testdata/RSA_4096.key
+	testKeyRSA4096 []byte
+)
+
+// testKey returns a deterministic key for testing
+// We require deterministic keys for reproducible tests
+// in order for the test transcript to match
+func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
+	t.Helper()
+
+	var testKey []byte
+	var err error
+	switch typ {
+	case AlgTypeECCP:
+		switch bits {
+		case 224:
+			testKey = testKeyEC224
+		case 256:
+			testKey = testKeyEC256
+		case 384:
+			testKey = testKeyEC384
+		case 521:
+			testKey = testKeyEC521
+		}
+
+		b, _ := pem.Decode(testKey)
+		require.NotNil(t, b)
+
+		key, err = x509.ParseECPrivateKey(b.Bytes)
+		require.NoError(t, err)
+
+	case AlgTypeRSA:
+		switch bits {
+		case 512:
+			testKey = testKeyRSA512
+		case 1024:
+			testKey = testKeyRSA1024
+		case 2048:
+			testKey = testKeyRSA2048
+		case 4096:
+			testKey = testKeyRSA4096
+		}
+
+		b, _ := pem.Decode(testKey)
+		require.NotNil(t, b)
+
+		key, err = x509.ParsePKCS1PrivateKey(b.Bytes)
+		require.NoError(t, err)
+
+	default:
+		t.Fatalf("ephemeral key: unknown algorithm")
+	}
 
 	return key
 }

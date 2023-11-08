@@ -32,6 +32,7 @@ func (f FormFactor) String() string {
 	if s, ok := formFactorStrings[f]; ok {
 		return s
 	}
+
 	return fmt.Sprintf("unknown(0x%02x)", int(f))
 }
 
@@ -44,9 +45,9 @@ const (
 	FormFactorUSBCNano              = 0x4
 	FormFactorUSBCLightningKeychain = 0x5
 
-	FormFactorUSBAKeychainFIPS          = 0x81
-	FormFactorUSBANanoFIPS              = 0x82
-	FormFactorUSBCKeychainFIPS          = 0x83
-	FormFactorUSBCNanoFIPS              = 0x84
-	FormFactorUSBCLightningKeychainFIPS = 0x85
+	FormFactorUSBAKeychainFIPS          = 0x80 + FormFactorUSBAKeychain
+	FormFactorUSBANanoFIPS              = 0x80 + FormFactorUSBANano
+	FormFactorUSBCKeychainFIPS          = 0x80 + FormFactorUSBCKeychain
+	FormFactorUSBCNanoFIPS              = 0x80 + FormFactorUSBCNano
+	FormFactorUSBCLightningKeychainFIPS = 0x80 + FormFactorUSBCLightningKeychain
 )
