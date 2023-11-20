@@ -6,7 +6,7 @@ module cunicu.li/go-piv
 go 1.21
 
 require (
-	cunicu.li/go-iso7816 v0.2.1
+	cunicu.li/go-iso7816 v0.2.2
 )
 
 require (
