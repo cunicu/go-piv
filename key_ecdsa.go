@@ -5,6 +5,7 @@ package piv
 
 import (
 	"crypto"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"fmt"
@@ -56,7 +57,12 @@ func (k *ECPPPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 	if peer.Curve.Params().BitSize != k.pub.Curve.Params().BitSize {
 		return nil, errMismatchingAlgorithms
 	}
-	msg := elliptic.Marshal(peer.Curve, peer.X, peer.Y)
+
+	peerECDH, err := peer.ECDH()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert key: %w", err)
+	}
+
 	return k.auth.do(k.c, k.pp, func(tx *iso.Transaction) ([]byte, error) {
 		var alg Algorithm
 		size := k.pub.Params().BitSize
@@ -74,7 +80,7 @@ func (k *ECPPPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 		resp, err := sendTLV(k.c.tx, iso.InsGeneralAuthenticate, byte(alg), k.slot.Key,
 			tlv.New(0x7c,
 				tlv.New(0x82),
-				tlv.New(0x85, msg),
+				tlv.New(0x85, peerECDH.Bytes()),
 			),
 		)
 		if err != nil {
@@ -89,34 +95,19 @@ func (k *ECPPPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 	})
 }
 
-func decodeECPublic(tvs tlv.TagValues, curve elliptic.Curve) (*ecdsa.PublicKey, error) {
+func decodeECDSAPublic(tvs tlv.TagValues, curve ecdh.Curve) (*ecdsa.PublicKey, error) {
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	p, _, ok := tvs.Get(0x86)
 	if !ok {
 		return nil, fmt.Errorf("%w: no points", errUnmarshal)
 	}
 
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=96
-	size := curve.Params().BitSize / 8
-	if len(p) != (size*2)+1 {
-		return nil, fmt.Errorf("%w of points: %d", errUnexpectedLength, len(p))
+	pk, err := curve.NewPublicKey(p)
+	if err != nil {
+		return nil, err
 	}
 
-	// Are points uncompressed?
-	if p[0] != 0x04 {
-		return nil, errPointsNotCompressed
-	}
-	p = p[1:]
-
-	var x, y big.Int
-	x.SetBytes(p[:size])
-	y.SetBytes(p[size:])
-
-	if !curve.IsOnCurve(&x, &y) {
-		return nil, errPointsNotOnCurve
-	}
-
-	return &ecdsa.PublicKey{Curve: curve, X: &x, Y: &y}, nil
+	return ecdhToECDSAPublicKey(pk)
 }
 
 func signEC(tx *iso.Transaction, slot Slot, pub *ecdsa.PublicKey, data []byte) ([]byte, error) {
@@ -161,5 +152,31 @@ func algEC(pub *ecdsa.PublicKey) (Algorithm, error) {
 
 	default:
 		return 0, UnsupportedCurveError{curve: size}
+	}
+}
+
+func ecdhToECDSAPublicKey(key *ecdh.PublicKey) (*ecdsa.PublicKey, error) {
+	rawKey := key.Bytes()
+	switch key.Curve() {
+	case ecdh.P256():
+		return &ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+			X:     big.NewInt(0).SetBytes(rawKey[1:33]),
+			Y:     big.NewInt(0).SetBytes(rawKey[33:]),
+		}, nil
+	case ecdh.P384():
+		return &ecdsa.PublicKey{
+			Curve: elliptic.P384(),
+			X:     big.NewInt(0).SetBytes(rawKey[1:49]),
+			Y:     big.NewInt(0).SetBytes(rawKey[49:]),
+		}, nil
+	case ecdh.P521():
+		return &ecdsa.PublicKey{
+			Curve: elliptic.P521(),
+			X:     big.NewInt(0).SetBytes(rawKey[1:67]),
+			Y:     big.NewInt(0).SetBytes(rawKey[67:]),
+		}, nil
+	default:
+		return nil, UnsupportedCurveError{}
 	}
 }
