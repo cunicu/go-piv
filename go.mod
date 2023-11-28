@@ -3,16 +3,14 @@
 
 module cunicu.li/go-piv
 
-go 1.21
+go 1.21.3
+
+require cunicu.li/go-iso7816 v0.3.0
 
 require (
-	cunicu.li/go-iso7816 v0.2.2
+	github.com/ebfe/scard v0.0.0-20230420082256-7db3f9b7c8a7 //test-only
+	github.com/stretchr/testify v1.8.4 // test-only
 )
-
-require (
- github.com/stretchr/testify v1.8.4 // test-only
- 	github.com/ebfe/scard v0.0.0-20230420082256-7db3f9b7c8a7 //test-only
-	)
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
