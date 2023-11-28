@@ -5,9 +5,9 @@ package piv
 
 import (
 	"crypto"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/ed25519"
-	"crypto/elliptic"
 	"crypto/rsa"
 	"encoding/asn1"
 	"errors"
@@ -36,8 +36,6 @@ var (
 	errUnsupportedTouchPolicy   = errors.New("unsupported touch policy")
 	errUnsupportedKeyType       = errors.New("unsupported key type")
 	errUnsupportedOrigin        = errors.New("unsupported origin")
-	errPointsNotOnCurve         = errors.New("resulting points are not on curve")
-	errPointsNotCompressed      = errors.New("points were not uncompressed")
 )
 
 // UnsupportedCurveError is used when a key has an unsupported curve
@@ -139,18 +137,18 @@ func decodePublic(b []byte, alg Algorithm) (pub crypto.PublicKey, err error) {
 		}
 
 	case AlgECCP256:
-		if pub, err = decodeECPublic(tvs, elliptic.P256()); err != nil {
-			return nil, fmt.Errorf("failed to decode elliptic curve public key: %w", err)
+		if pub, err = decodeECDSAPublic(tvs, ecdh.P256()); err != nil {
+			return nil, fmt.Errorf("failed to decode P256 public key: %w", err)
 		}
 
 	case AlgECCP384:
-		if pub, err = decodeECPublic(tvs, elliptic.P384()); err != nil {
-			return nil, fmt.Errorf("failed to decode elliptic curve public key: %w", err)
+		if pub, err = decodeECDSAPublic(tvs, ecdh.P384()); err != nil {
+			return nil, fmt.Errorf("failed to decode P384 public key: %w", err)
 		}
 
 	case AlgEd25519:
 		if pub, err = decodeEd25519Public(tvs); err != nil {
-			return nil, fmt.Errorf("failed to decode ed25519 public key: %w", err)
+			return nil, fmt.Errorf("failed to decode Ed25519 public key: %w", err)
 		}
 
 	default:
