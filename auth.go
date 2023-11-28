@@ -239,3 +239,69 @@ func (c *Card) SetPUK(oldPUK, newPUK string) error {
 
 	return nil
 }
+
+func encodePIN(pin string) ([]byte, error) {
+	data := []byte(pin)
+	if len(data) == 0 {
+		return nil, fmt.Errorf("%w: cannot be empty", errInvalidPinLength)
+	}
+
+	if len(data) > 8 {
+		return nil, fmt.Errorf("%w: longer than 8 bytes", errInvalidPinLength)
+	}
+
+	// Apply padding
+	for i := len(data); i < 8; i++ {
+		data = append(data, 0xff)
+	}
+
+	return data, nil
+}
+
+// VerifyPIN attempts to authenticate against the card with the provided PIN.
+//
+// PIN authentication for other operations are handled separately, and VerifyPIN
+// does not need to be called before those methods.
+//
+// After a specific number of authentication attempts with an invalid PIN,
+// usually 3, the PIN will become block and refuse further attempts. At that
+// point the PUK must be used to unblock the PIN.
+//
+// Use DefaultPIN if the PIN hasn't been set.
+func (c *Card) VerifyPIN(pin string) error {
+	return login(c.tx, pin)
+}
+
+func login(tx *iso.Transaction, pin string) error {
+	data, err := encodePIN(pin)
+	if err != nil {
+		return err
+	}
+
+	// https://csrc.nist.gov/CSRC/media/Publications/sp/800-73/4/archive/2015-05-29/documents/sp800_73-4_pt2_draft.pdf#page=20
+	if _, err = send(tx, iso.InsVerify, 0, 0x80, data); err != nil {
+		return fmt.Errorf("failed to execute command: %w", err)
+	}
+
+	return err
+}
+
+func loginNeeded(tx *iso.Transaction) bool {
+	_, err := send(tx, iso.InsVerify, 0, 0x80, nil)
+	return err != nil
+}
+
+// Retries returns the number of attempts remaining to enter the correct PIN.
+func (c *Card) Retries() (int, error) {
+	_, err := send(c.tx, iso.InsVerify, 0, 0x80, nil)
+	if err == nil {
+		return 0, fmt.Errorf("%w from empty pin", errExpectedError)
+	}
+
+	var aErr AuthError
+	if errors.As(err, &aErr) {
+		return aErr.Retries, nil
+	}
+
+	return 0, fmt.Errorf("invalid response: %w", err)
+}
