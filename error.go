@@ -26,7 +26,7 @@ func wrapCode(err error) error {
 	case c == iso.ErrAuthenticationMethodBlocked:
 		return AuthError{0}
 
-	case c[0] == 0x63 && c[1]>>4 == 0xc:
+	case c[0] == 0x63 && c[1]&0xf0 == 0xc0:
 		return AuthError{int(c[1] & 0xf)}
 
 	case c[0] == 0x63 && c[1]>>4 == 0x0:
