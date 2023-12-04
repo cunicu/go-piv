@@ -1,5 +1,7 @@
 cunicu.li/go-iso7816 v0.3.0 h1:KSt0D7TBh0ghWnpDSjNJDehFmXwM67Q8I3Qg0fvZlgw=
 cunicu.li/go-iso7816 v0.3.0/go.mod h1:jL3bciDEU4prkEtONmCzVAz542Vb7SLJBnLV3o4o8qo=
+cunicu.li/go-iso7816 v0.4.0 h1:GwYTCcaGlaNC+Tb+TVVqGTKX83Z/UALM1U388Ymgfec=
+cunicu.li/go-iso7816 v0.4.0/go.mod h1:jL3bciDEU4prkEtONmCzVAz542Vb7SLJBnLV3o4o8qo=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
