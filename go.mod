@@ -3,7 +3,7 @@
 
 module cunicu.li/go-piv
 
-go 1.22.0
+go 1.22.1
 
 require cunicu.li/go-iso7816 v0.5.2
 
