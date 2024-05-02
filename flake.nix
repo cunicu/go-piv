@@ -33,12 +33,15 @@
               frameworks.PCSC
             ];
 
-          shellHook = ''
-            export CGO_LDFLAGS="-F${frameworks.PCSC}/Library/Frameworks";
-          '';
+          shellHook =
+            if pkgs.stdenv.isDarwin
+            then ''
+              export CGO_LDFLAGS="-F${frameworks.PCSC}/Library/Frameworks";
+            ''
+            else "";
         };
 
-        formatter = nixpkgs.alejandra;
+        formatter = nixpkgs.nixnixfmt-rfc-style;
       }
     );
 }
