@@ -78,6 +78,7 @@ const (
 	insAttest           = 0xf9
 	insGetSerial        = 0xf8
 	insGetMetadata      = 0xf7
+	insMoveDeleteKey    = 0xf6
 )
 
 // Card is an exclusive open connection to a Card smart card. While open,
