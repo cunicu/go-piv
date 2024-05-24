@@ -42,6 +42,18 @@ func TestMetadata(t *testing.T) {
 			false,
 		},
 		{
+			"RSA/3072/Generated",
+			SlotAuthentication,
+			Key{AlgRSA3072, PINPolicyNever, TouchPolicyNever},
+			false,
+		},
+		{
+			"RSA/4096/Generated",
+			SlotAuthentication,
+			Key{AlgRSA4096, PINPolicyNever, TouchPolicyNever},
+			false,
+		},
+		{
 			"EC/P256/Imported",
 			SlotAuthentication,
 			Key{AlgECCP256, PINPolicyNever, TouchPolicyNever},
@@ -63,6 +75,18 @@ func TestMetadata(t *testing.T) {
 			"RSA/2048/Imported",
 			SlotAuthentication,
 			Key{AlgRSA2048, PINPolicyNever, TouchPolicyNever},
+			true,
+		},
+		{
+			"RSA/3072/Imported",
+			SlotAuthentication,
+			Key{AlgRSA3072, PINPolicyNever, TouchPolicyNever},
+			true,
+		},
+		{
+			"RSA/4096/Imported",
+			SlotAuthentication,
+			Key{AlgRSA4096, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{

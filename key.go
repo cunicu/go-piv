@@ -122,7 +122,7 @@ func decodePublic(b []byte, alg Algorithm) (pub crypto.PublicKey, err error) {
 	}
 
 	switch alg {
-	case AlgRSA1024, AlgRSA2048:
+	case AlgRSA1024, AlgRSA2048, AlgRSA3072, AlgRSA4096:
 		if pub, err = decodeRSAPublic(tvs); err != nil {
 			return nil, fmt.Errorf("failed to decode RSA public key: %w", err)
 		}
@@ -243,6 +243,14 @@ func (c *Card) SetPrivateKeyInsecure(key ManagementKey, slot Slot, private crypt
 		case 2048:
 			policy.Algorithm = AlgRSA2048
 			elemLen = 128
+
+		case 3072:
+			policy.Algorithm = AlgRSA3072
+			elemLen = 192
+
+		case 4096:
+			policy.Algorithm = AlgRSA4096
+			elemLen = 256
 
 		default:
 			return errUnsupportedKeySize
