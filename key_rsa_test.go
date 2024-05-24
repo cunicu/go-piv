@@ -29,6 +29,8 @@ func TestSignRSA(t *testing.T) {
 	}{
 		{"RSA/1024", AlgRSA1024, false},
 		{"RSA/2048", AlgRSA2048, true},
+		{"RSA/3072", AlgRSA3072, true},
+		{"RSA/4096", AlgRSA4096, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -70,6 +72,8 @@ func TestSignRSAPSS(t *testing.T) {
 	}{
 		{"RSA/1024", AlgRSA1024, false},
 		{"RSA/2048", AlgRSA2048, true},
+		{"RSA/3072", AlgRSA3072, true},
+		{"RSA/4096", AlgRSA4096, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -124,10 +128,16 @@ func TestSetRSAPrivateKey(t *testing.T) {
 			wantErr: nil,
 		},
 		{
+			name:    "RSA/3072",
+			bits:    3072,
+			slot:    SlotAuthentication,
+			wantErr: nil,
+		},
+		{
 			name:    "RSA/4096",
 			bits:    4096,
 			slot:    SlotAuthentication,
-			wantErr: errUnsupportedKeySize,
+			wantErr: nil,
 		},
 		{
 			name:    "RSA/512",

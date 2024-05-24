@@ -25,6 +25,8 @@ const (
 	Alg3DES    Algorithm = 0x03
 	AlgRSA1024 Algorithm = 0x06
 	AlgRSA2048 Algorithm = 0x07
+	AlgRSA3072 Algorithm = 0x05
+	AlgRSA4096 Algorithm = 0x16
 	AlgECCP256 Algorithm = 0x11
 	AlgECCP384 Algorithm = 0x14
 
@@ -35,7 +37,7 @@ const (
 
 func (a Algorithm) algType() algorithmType {
 	switch a {
-	case AlgRSA1024, AlgRSA2048:
+	case AlgRSA1024, AlgRSA2048, AlgRSA3072, AlgRSA4096:
 		return AlgTypeRSA
 
 	case AlgECCP256, AlgECCP384:
@@ -55,6 +57,10 @@ func (a Algorithm) bits() int {
 		return 1024
 	case AlgRSA2048:
 		return 2048
+	case AlgRSA3072:
+		return 3072
+	case AlgRSA4096:
+		return 4096
 
 	case AlgECCP256:
 		return 256
