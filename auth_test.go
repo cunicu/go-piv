@@ -57,13 +57,13 @@ func TestSetManagementKey(t *testing.T) {
 		_, err := io.ReadFull(c.Rand, mgmtKey[:])
 		require.NoError(t, err, "Failed to generate management key")
 
-		err = c.SetManagementKey(DefaultManagementKey, mgmtKey)
+		err = c.SetManagementKey(DefaultManagementKey, mgmtKey, false)
 		require.NoError(t, err, "Failed to set management key")
 
 		err = c.authenticate(mgmtKey)
 		assert.NoError(t, err, "Failed to authenticate with new management key")
 
-		err = c.SetManagementKey(mgmtKey, DefaultManagementKey)
+		err = c.SetManagementKey(mgmtKey, DefaultManagementKey, false)
 		require.NoError(t, err, "Failed to reset management key")
 	})
 }
@@ -134,13 +134,13 @@ func TestChangeManagementKey(t *testing.T) {
 			}
 		}
 
-		err = c.SetManagementKey(newKey, newKey)
+		err = c.SetManagementKey(newKey, newKey, false)
 		assert.Error(t, err, "Successfully changed management key with invalid key, expected error")
 
-		err = c.SetManagementKey(DefaultManagementKey, newKey)
+		err = c.SetManagementKey(DefaultManagementKey, newKey, false)
 		require.NoError(t, err, "Failed to change management key")
 
-		err = c.SetManagementKey(newKey, DefaultManagementKey)
+		err = c.SetManagementKey(newKey, DefaultManagementKey, false)
 		require.NoError(t, err, "Failed to reset management key")
 	})
 }
