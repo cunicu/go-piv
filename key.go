@@ -253,6 +253,14 @@ func (c *Card) SetPrivateKeyInsecure(key ManagementKey, slot Slot, private crypt
 			policy.Algorithm = AlgRSA2048
 			elemLen = 128
 
+		case 3072:
+			policy.Algorithm = AlgRSA3072
+			elemLen = 192
+
+		case 4096:
+			policy.Algorithm = AlgRSA4096
+			elemLen = 256
+
 		default:
 			return errUnsupportedKeySize
 		}

@@ -174,6 +174,12 @@ func algRSA(pub *rsa.PublicKey) (Algorithm, error) {
 	case 2048:
 		return AlgRSA2048, nil
 
+	case 3072:
+		return AlgRSA3072, nil
+
+	case 4096:
+		return AlgRSA4096, nil
+
 	default:
 		return 0, fmt.Errorf("%w: %d", errUnsupportedKeySize, size)
 	}
