@@ -66,6 +66,7 @@ var (
 
 	// YubiKey specific
 	SlotAttestation = Slot{keyAttestation, doCertAttestation}
+	SlotGraveyard   = Slot{Key: 0xff} // Moving a key to this slot will destroy it
 )
 
 // SlotRetiredKeyManagement provides access to "retired" slots. Slots meant for old Key Management

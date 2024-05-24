@@ -288,3 +288,27 @@ func (c *Card) SetPrivateKeyInsecure(key ManagementKey, slot Slot, private crypt
 
 	return nil
 }
+
+// MoveKey moves a key from any slot except F9 (SlotAttestation) to any other slot except F9 (SlotAttestation).
+//
+// This enables retaining retired encryption keys on the device to decrypt older messages.
+//
+// Note: This is a YubiKey specific extension to PIV. Its supported by YubiKeys with firmware 5.7 or newer.
+func (c *Card) MoveKey(key ManagementKey, from, to Slot) error {
+	if err := c.authenticate(key); err != nil {
+		return fmt.Errorf("failed to authenticate with management key: %w", err)
+	}
+
+	_, err := send(c.tx, insMoveDeleteKey, from.Key, to.Key, nil)
+
+	return err
+}
+
+// DeleteKey deletes a key  from any slot, including F9 (SlotAttestation).
+//
+// This enables destroying key material without overwriting with bogus data or resetting the PIV application.
+//
+// Note: This is a YubiKey specific extension to PIV. Its supported by YubiKeys with firmware 5.7 or newer.
+func (c *Card) DeleteKey(key ManagementKey, slot Slot) error {
+	return c.MoveKey(key, slot, SlotGraveyard)
+}
