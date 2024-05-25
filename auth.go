@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
+// SPDX-FileCopyrightText: 2023-2024 Steffen Vogel <post@steffenvogel.de>
 // SPDX-License-Identifier: Apache-2.0
 
 package piv
@@ -108,14 +108,13 @@ func (c *Card) authenticateWithPIN(pin string) error {
 //	if err := c.SetManagementKey(piv.DefaultManagementKey, newKey); err != nil {
 //		// ...
 //	}
-func (c *Card) SetManagementKey(oldKey, newKey ManagementKey) error {
+func (c *Card) SetManagementKey(oldKey, newKey ManagementKey, requireTouch bool) error {
 	if err := c.authenticate(oldKey); err != nil {
 		return fmt.Errorf("failed to authenticate with old key: %w", err)
 	}
 
 	p2 := byte(0xff)
-	touch := false // TODO
-	if touch {
+	if requireTouch {
 		p2 = 0xfe
 	}
 
@@ -130,7 +129,7 @@ func (c *Card) SetManagementKey(oldKey, newKey ManagementKey) error {
 
 // https://docs.yubico.com/yesdk/users-manual/application-piv/pin-only.html
 // https://docs.yubico.com/yesdk/users-manual/application-piv/piv-objects.html#pinprotecteddata
-func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string) error {
+func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string, requireTouch bool) error {
 	var newKey ManagementKey
 
 	if n, err := c.Rand.Read(newKey[:]); err != nil {
@@ -152,7 +151,7 @@ func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string) er
 		return err
 	}
 
-	return c.SetManagementKey(oldKey, newKey)
+	return c.SetManagementKey(oldKey, newKey, requireTouch)
 }
 
 // SetPIN updates the PIN to a new value. For compatibility, PINs should be 1-8

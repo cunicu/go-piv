@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2020 Google LLC
+// SPDX-FileCopyrightText: 2023-2024 Steffen Vogel <post@steffenvogel.de>
 // SPDX-License-Identifier: Apache-2.0
 
 package piv
 
 import (
 	"crypto"
+	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -90,6 +93,8 @@ func TestDecryptRSA(t *testing.T) {
 	}{
 		{"RSA/1024", AlgRSA1024, false},
 		{"RSA/2048", AlgRSA2048, true},
+		{"RSA/3072", AlgRSA3072, true},
+		{"RSA/4096", AlgRSA4096, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -216,6 +221,16 @@ func TestGenerateKey(t *testing.T) {
 		{
 			name: "RSA/2048",
 			alg:  AlgRSA2048,
+			long: true,
+		},
+		{
+			name: "RSA/3072",
+			alg:  AlgRSA3072,
+			long: true,
+		},
+		{
+			name: "RSA/4096",
+			alg:  AlgRSA4096,
 			long: true,
 		},
 	}
@@ -408,12 +423,19 @@ var (
 	//go:embed testdata/EC_521.key
 	testKeyEC521 []byte
 
+	//go:embed testdata/Ed25519.key
+	testKeyEd25519 []byte
+	//go:embed testdata/X25519.key
+	testKeyX25519 []byte
+
 	//go:embed testdata/RSA_512.key
 	testKeyRSA512 []byte
 	//go:embed testdata/RSA_1024.key
 	testKeyRSA1024 []byte
 	//go:embed testdata/RSA_2048.key
 	testKeyRSA2048 []byte
+	//go:embed testdata/RSA_3072.key
+	testKeyRSA3072 []byte
 	//go:embed testdata/RSA_4096.key
 	testKeyRSA4096 []byte
 )
@@ -445,6 +467,21 @@ func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
 		key, err = x509.ParseECPrivateKey(b.Bytes)
 		require.NoError(t, err)
 
+	case AlgTypeEd25519:
+		b, _ := pem.Decode(testKeyEd25519)
+		require.NotNil(t, b)
+		require.Len(t, b.Bytes, 32)
+
+		key = ed25519.PrivateKey(b.Bytes)
+
+	case AlgTypeX25519:
+		b, _ := pem.Decode(testKeyX25519)
+		require.NotNil(t, b)
+		require.Len(t, b.Bytes, 32)
+
+		key, err = ecdh.X25519().NewPrivateKey(b.Bytes)
+		require.NoError(t, err)
+
 	case AlgTypeRSA:
 		switch bits {
 		case 512:
@@ -453,6 +490,8 @@ func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
 			testKey = testKeyRSA1024
 		case 2048:
 			testKey = testKeyRSA2048
+		case 3072:
+			testKey = testKeyRSA3072
 		case 4096:
 			testKey = testKeyRSA4096
 		}
