@@ -33,9 +33,8 @@ func (k *keyEd25519) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]by
 	})
 }
 
+// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 func decodeEd25519Public(tvs tlv.TagValues) (ed25519.PublicKey, error) {
-	// Adaptation of
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	p, _, ok := tvs.Get(0x86)
 	if !ok {
 		return nil, fmt.Errorf("%w points", errUnmarshal)
@@ -48,9 +47,8 @@ func decodeEd25519Public(tvs tlv.TagValues) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(p), nil
 }
 
+// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=118
 func signEd25519(tx *iso.Transaction, slot Slot, data []byte) ([]byte, error) {
-	// Adaptation of
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=118
 	resp, err := sendTLV(tx, iso.InsGeneralAuthenticate, byte(AlgEd25519), slot.Key,
 		tlv.New(0x7c,
 			tlv.New(0x82),

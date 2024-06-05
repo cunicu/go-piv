@@ -87,8 +87,9 @@ func (ki *Metadata) unmarshal(tvs tlv.TagValues) (err error) {
 
 // Metadata returns public information about the given key slot. It is only
 // supported by YubiKeys with a version >= 5.3.0.
+//
+// https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html#_get_metadata
 func (c *Card) Metadata(slot Slot) (*Metadata, error) {
-	// https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html#_get_metadata
 	resp, err := sendTLV(c.tx, insGetMetadata, 0x00, slot.Key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute command: %w", err)

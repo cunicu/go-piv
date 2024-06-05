@@ -4,6 +4,7 @@
 package piv
 
 // Appendix A––PIV Data Mode
+//
 // https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=37
 //
 //nolint:unused
