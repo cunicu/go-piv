@@ -14,7 +14,7 @@ func TestMetadata(t *testing.T) {
 	tests := []struct {
 		name      string
 		slot      Slot
-		policy    Key
+		key       Key
 		importKey bool
 	}{
 		{
@@ -137,21 +137,22 @@ func TestMetadata(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			withCard(t, true, false, SupportsMetadata, func(t *testing.T, c *Card) {
 				want := &Metadata{
-					Algorithm:   test.policy.Algorithm,
-					PINPolicy:   test.policy.PINPolicy,
-					TouchPolicy: test.policy.TouchPolicy,
+					Algorithm:   test.key.Algorithm,
+					PINPolicy:   test.key.PINPolicy,
+					TouchPolicy: test.key.TouchPolicy,
+					IsDefault:   false,
 				}
 
 				if test.importKey {
-					key := testKey(t, test.policy.Algorithm.algType(), test.policy.Algorithm.bits())
+					key := testKey(t, test.key.Algorithm.algType(), test.key.Algorithm.bits())
 
-					err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, key, test.policy)
+					err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, key, test.key)
 					require.NoError(t, err, "importing key")
 
 					want.Origin = OriginImported
 					want.PublicKey = key.Public()
 				} else {
-					pub, err := c.GenerateKey(DefaultManagementKey, test.slot, test.policy)
+					pub, err := c.GenerateKey(DefaultManagementKey, test.slot, test.key)
 					require.NoError(t, err, "Failed to generate key")
 
 					want.Origin = OriginGenerated
@@ -164,4 +165,46 @@ func TestMetadata(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestMetadataPINPUK(t *testing.T) {
+	for typ, slot := range map[string]Slot{
+		"PIN": SlotPIN,
+		"PUK": SlotPUK,
+	} {
+		t.Run(typ, func(t *testing.T) {
+			withCard(t, true, false, SupportsMetadata, func(t *testing.T, c *Card) {
+				want := &Metadata{
+					Algorithm:        AlgPIN,
+					RetriesTotal:     3,
+					RetriesRemaining: 3,
+					IsDefault:        true,
+				}
+
+				// Get default metadata
+				got, err := c.Metadata(slot)
+				require.NoError(t, err)
+				require.Equal(t, want, got)
+			})
+		})
+	}
+}
+
+func TestMetadataCardManagement(t *testing.T) {
+	withCard(t, true, false, SupportsMetadata, func(t *testing.T, c *Card) {
+		want := &Metadata{
+			TouchPolicy: TouchPolicyNever,
+			IsDefault:   true,
+		}
+
+		if v571.Less(c.Version()) {
+			want.Algorithm = Alg3DES
+		} else {
+			want.Algorithm = AlgAES192
+		}
+
+		got, err := c.Metadata(SlotCardManagement)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	})
 }
