@@ -47,19 +47,6 @@ func (e UnsupportedCurveError) Error() string {
 	return fmt.Sprintf("unsupported curve: %d", e.curve)
 }
 
-// Slot is a private key and certificate combination managed by the security key.
-type Slot struct {
-	// Key is a reference for a key type.
-	//
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=32
-	Key byte
-
-	// Object is a reference for data object.
-	//
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=30
-	Object Object
-}
-
 //nolint:gochecknoglobals
 var (
 	extIDFirmwareVersion = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 4, 1, 41482, 3, 3})
