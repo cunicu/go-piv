@@ -73,10 +73,10 @@ func TestUnblockPIN(t *testing.T) {
 		badPIN := "0"
 		for {
 			err := login(c.tx, badPIN)
-			require.Error(t, err, "Login with bad pin succeeded")
+			require.Error(t, err, "Login with bad PIN succeeded")
 
 			var e AuthError
-			require.ErrorAs(t, err, &e, "Error returned was not a wrong pin error")
+			require.ErrorAs(t, err, &e, "Error returned was not a wrong PIN error")
 
 			if e.Retries == 0 {
 				break
@@ -87,7 +87,7 @@ func TestUnblockPIN(t *testing.T) {
 		require.NoError(t, err, "Failed to unblock PIN")
 
 		err = login(c.tx, DefaultPIN)
-		assert.NoError(t, err, "Failed to login with pin after unblock")
+		assert.NoError(t, err, "Failed to login with PIN after unblock")
 	})
 }
 
@@ -96,7 +96,7 @@ func TestChangePIN(t *testing.T) {
 		newPIN := "654321"
 
 		err := c.SetPIN(newPIN, newPIN)
-		assert.Error(t, err, "Successfully changed pin with invalid pin, expected error")
+		assert.Error(t, err, "Successfully changed PIN with invalid PIN, expected error")
 
 		err = c.SetPIN(DefaultPIN, newPIN)
 		require.NoError(t, err, "Failed to change PIN")

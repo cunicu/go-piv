@@ -304,7 +304,7 @@ func loginNeeded(tx *iso.Transaction) bool {
 func (c *Card) Retries() (int, error) {
 	_, err := send(c.tx, iso.InsVerify, 0, 0x80, nil)
 	if err == nil {
-		return 0, fmt.Errorf("%w from empty pin", errExpectedError)
+		return 0, fmt.Errorf("%w from empty PIN", errExpectedError)
 	}
 
 	var aErr AuthError
