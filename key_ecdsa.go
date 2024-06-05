@@ -95,8 +95,8 @@ func (k *ECPPPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 	})
 }
 
+// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 func decodeECDSAPublic(tvs tlv.TagValues, curve ecdh.Curve) (*ecdsa.PublicKey, error) {
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	p, _, ok := tvs.Get(0x86)
 	if !ok {
 		return nil, fmt.Errorf("%w: no points", errUnmarshal)
@@ -117,6 +117,7 @@ func signEC(tx *iso.Transaction, slot Slot, pub *ecdsa.PublicKey, data []byte) (
 	}
 
 	// Same as the standard library
+	//
 	// https://github.com/golang/go/blob/go1.13.5/src/crypto/ecdsa/ecdsa.go#L125-L128
 	orderBytes := (pub.Params().BitSize + 7) / 8
 	if len(data) > orderBytes {

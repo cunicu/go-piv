@@ -61,16 +61,15 @@ const (
 	keyCardAuthentication = 0x9e
 	keyAttestation        = 0xf9
 
-	// TODO: Figure out why these are different from iso7816 ins.
+	// TODO: Figure out why these are different from iso7816 instructions.
 	insGenerateAsymmetric = 0x47
 	insGetData            = 0xcb
 	insPutData            = 0xdb
 
 	// Yubico PIV extensions
 	//
-	// See:
-	// - https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html
-	// - https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.h#L656
+	// https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html
+	// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.h#L656
 	insSetManagementKey = 0xff
 	insImportKey        = 0xfe
 	insGetVersion       = 0xfd

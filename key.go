@@ -51,12 +51,12 @@ func (e UnsupportedCurveError) Error() string {
 type Slot struct {
 	// Key is a reference for a key type.
 	//
-	// See: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=32
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=32
 	Key byte
 
 	// Object is a reference for data object.
 	//
-	// See: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=30
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=30
 	Object Object
 }
 
@@ -75,13 +75,17 @@ var (
 type Key struct {
 	// Algorithm to use when generating the key.
 	Algorithm Algorithm
+
 	// PINPolicy for the key.
 	//
 	// BUG(ericchiang): some older YubiKeys (third generation) will silently
 	// drop this value. If PINPolicyNever or PINPolicyOnce is supplied but the
 	// key still requires a PIN every time, you may be using a buggy key and
-	// should supply PINPolicyAlways. See https://cunicu.li/go-piv/issues/60
+	// should supply PINPolicyAlways.
+	//
+	// https://github.com/go-piv/piv-go/issues/60
 	PINPolicy PINPolicy
+
 	// TouchPolicy for the key.
 	TouchPolicy TouchPolicy
 }
@@ -289,6 +293,7 @@ func (c *Card) SetPrivateKeyInsecure(key ManagementKey, slot Slot, private crypt
 	}
 
 	// This command is a Yubico PIV extension.
+	//
 	// https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html
 	if _, err := sendTLV(c.tx, insImportKey, byte(policy.Algorithm), slot.Key, tvs...); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)

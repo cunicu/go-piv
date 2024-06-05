@@ -40,8 +40,8 @@ func (k *keyRSA) Decrypt(_ io.Reader, msg []byte, _ crypto.DecrypterOpts) ([]byt
 	})
 }
 
+// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 func decodeRSAPublic(tvs tlv.TagValues) (*rsa.PublicKey, error) {
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	mod, _, ok := tvs.Get(0x81)
 	if !ok {
 		return nil, fmt.Errorf("%w modulus", errUnmarshal)

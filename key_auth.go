@@ -37,7 +37,8 @@ func (k KeyAuth) authTx(c *Card, pp PINPolicy) error {
 
 	// PINPolicyAlways should always prompt a PIN even if the key says that
 	// login isn't needed.
-	// https://cunicu.li/go-piv/issues/49
+	//
+	// https://github.com/go-piv/piv-go/issues/49
 	if pp != PINPolicyAlways && !loginNeeded(c.tx) {
 		return nil
 	}
