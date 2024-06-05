@@ -178,6 +178,7 @@ func (c *Card) AttestationCertificate() (*x509.Certificate, error) {
 // YubiKey.
 //
 // This method is only supported for YubiKey versions >= 4.3.0.
+//
 // https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
 //
 // Certificates returned by this method MUST NOT be used for anything other than
