@@ -251,6 +251,10 @@ func encodePIN(pin string) ([]byte, error) {
 	}
 
 	// Apply padding
+	//
+	// 2.4 Security Architecture
+	// 2.4.3 Authentication of an Individual
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=88
 	for i := len(data); i < 8; i++ {
 		data = append(data, 0xff)
 	}
@@ -278,7 +282,11 @@ func login(tx *iso.Transaction, pin string) error {
 		return err
 	}
 
+	// 3.2 PIV Card Application Card Commands for Authentication
+	// 3.2.1 VERIFY Card Command
+	//
 	// https://csrc.nist.gov/CSRC/media/Publications/sp/800-73/4/archive/2015-05-29/documents/sp800_73-4_pt2_draft.pdf#page=20
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=86
 	if _, err = send(tx, iso.InsVerify, 0, 0x80, data); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
