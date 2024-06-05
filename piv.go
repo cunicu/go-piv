@@ -21,7 +21,7 @@ import (
 var (
 	errChallengeFailed  = errors.New("challenge failed")
 	errExpectedError    = errors.New("expected error")
-	errInvalidPinLength = errors.New("invalid pin length")
+	errInvalidPinLength = errors.New("invalid PIN length")
 )
 
 const (

@@ -48,7 +48,7 @@ func (d *PinProtectedData) SetManagementKey(key ManagementKey) error {
 	if tvs := d.PopAll(0x88); len(tvs) == 0 {
 		tvYubico = tlv.New(0x88)
 	} else if len(tvs) > 1 {
-		return fmt.Errorf("%w: found more then one YubiKey pin protected tag value", errUnmarshal)
+		return fmt.Errorf("%w: found more then one YubiKey PIN protected tag value", errUnmarshal)
 	} else {
 		tvYubico = tvs[0]
 	}

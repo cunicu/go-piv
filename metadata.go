@@ -33,7 +33,7 @@ func (ki *Metadata) unmarshal(tvs tlv.TagValues) (err error) {
 	// PIN & Touch Policy
 	if v, _, ok := tvs.Get(0x02); ok {
 		if len(v) != 2 {
-			return fmt.Errorf("%w for pin and touch policy", errUnexpectedLength)
+			return fmt.Errorf("%w for PIN and touch policy", errUnexpectedLength)
 		}
 
 		if ki.PINPolicy, ok = pinPolicyMapInv[v[0]]; !ok {
