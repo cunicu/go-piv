@@ -76,8 +76,10 @@ func TestNewCard(t *testing.T) {
 func TestMultipleConnections(t *testing.T) {
 	require := require.New(t)
 
-	if !test.DangerousWipeRealCard || runtime.GOOS == "darwin" {
+	if !test.DangerousWipeRealCard {
 		t.Skip("not running test that accesses card, please set env var TEST_DANGEROUS_WIPE_REAL_CARD=1")
+	} else if runtime.GOOS == "darwin" {
+		t.Skip("Test is broken on macOS")
 	}
 
 	ctx, err := scard.EstablishContext()
