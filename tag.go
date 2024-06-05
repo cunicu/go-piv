@@ -91,4 +91,15 @@ const (
 	tagPINPolicy          = 0xaa
 	tagTouchPolicy        = 0xab
 	tagErrorDetectionCode = 0xfe
+
+	// Yubikey extensions
+
+	tagMetadataAlgo          = 0x01
+	tagMetadataPolicy        = 0x02
+	tagMetadataOrigin        = 0x03
+	tagMetadataPublicKey     = 0x04
+	tagMetadataIsDefault     = 0x05
+	tagMetadataRetries       = 0x06
+	tagMetadataBioConfigured = 0x07
+	tagMetadataTemporaryPin  = 0x08
 )
