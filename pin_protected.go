@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"cunicu.li/go-iso7816"
+	iso "cunicu.li/go-iso7816"
 	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
@@ -83,7 +83,7 @@ func (c *Card) PinProtectedData(pin string) (*PinProtectedData, error) {
 
 	resp, err := sendTLV(c.tx, insGetData, 0x3f, 0xff, doPrinted.TagValue())
 	if err != nil {
-		if errors.Is(err, iso7816.ErrFileOrAppNotFound) {
+		if errors.Is(err, iso.ErrFileOrAppNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to execute command: %w", err)
