@@ -144,3 +144,64 @@ func TestChangeManagementKey(t *testing.T) {
 		require.NoError(t, err, "Failed to reset management key")
 	})
 }
+
+func TestSetRetries(t *testing.T) {
+	withCard(t, true, false, nil, func(t *testing.T, c *Card) {
+		// Check default attempt counters
+		for _, key := range []byte{keyPIN, keyPUK} {
+			meta, err := c.Metadata(Slot{Key: key})
+			require.NoError(t, err)
+			require.Equal(t, 3, meta.RetriesRemaining)
+			require.Equal(t, 3, meta.RetriesTotal)
+			require.True(t, meta.IsDefault)
+		}
+
+		retries := map[byte]int{keyPIN: 5, keyPUK: 10}
+
+		// Modify retry counter
+		err := c.SetRetries(DefaultManagementKey, DefaultPIN, retries[keyPIN], retries[keyPUK])
+		require.NoError(t, err)
+
+		for key, cnt := range retries {
+			meta, err := c.Metadata(Slot{Key: key})
+			require.NoError(t, err)
+			require.Equal(t, cnt, meta.RetriesRemaining)
+			require.Equal(t, cnt, meta.RetriesTotal)
+			require.True(t, meta.IsDefault)
+		}
+
+		// Update remaining retries
+		var aErr AuthError
+
+		err = c.VerifyPIN("92837492")
+		require.ErrorAs(t, err, &aErr)
+		require.Equal(t, retries[keyPIN]-1, aErr.Retries)
+
+		err = c.Unblock("92837492", "12345678")
+		require.ErrorAs(t, err, &aErr)
+		require.Equal(t, retries[keyPUK]-1, aErr.Retries)
+
+		for key, cnt := range retries {
+			meta, err := c.Metadata(Slot{Key: key})
+			require.NoError(t, err)
+			require.Equal(t, cnt-1, meta.RetriesRemaining)
+			require.Equal(t, cnt, meta.RetriesTotal)
+			require.True(t, meta.IsDefault)
+		}
+
+		// Modify PIN/PUK
+		err = c.SetPIN(DefaultPIN, "981211")
+		require.NoError(t, err)
+
+		err = c.SetPUK(DefaultPUK, "981211")
+		require.NoError(t, err)
+
+		for key, cnt := range retries {
+			meta, err := c.Metadata(Slot{Key: key})
+			require.NoError(t, err)
+			require.Equal(t, cnt, meta.RetriesRemaining)
+			require.Equal(t, cnt, meta.RetriesTotal)
+			require.False(t, meta.IsDefault)
+		}
+	})
+}
