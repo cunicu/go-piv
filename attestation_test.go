@@ -33,7 +33,7 @@ func TestAttestation(t *testing.T) {
 		serial, err := c.Serial()
 		assert.NoError(t, err, "Failed to get serial number")
 		assert.Equal(t, serial, a.Serial, "Mismatching attestation serial got=%d, wanted=%d", a.Serial, serial)
-		assert.Equal(t, key.PINPolicy, a.PINPolicy, "Mismatching attestation pin policy got=0x%x, wanted=0x%x", a.TouchPolicy, key.PINPolicy)
+		assert.Equal(t, key.PINPolicy, a.PINPolicy, "Mismatching attestation PIN policy got=0x%x, wanted=0x%x", a.TouchPolicy, key.PINPolicy)
 		assert.Equal(t, key.TouchPolicy, a.TouchPolicy, "Mismatching attestation touch policy got=0x%x, wanted=0x%x", a.TouchPolicy, key.TouchPolicy)
 		assert.Equal(t, c.Version(), a.Version, "Mismatching attestation version got=%#v, wanted=%#v", a.Version, c.Version())
 		assert.Equal(t, SlotAuthentication, a.Slot, "Mismatching attested slot got=%v, wanted=%v", a.Slot, SlotAuthentication)
