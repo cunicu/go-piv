@@ -21,10 +21,10 @@ var errFailedToGenerateKey = errors.New("failed to generate random key")
 // certificates to slots.
 //
 // Use DefaultManagementKey if the management key hasn't been set.
+//
+// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=92
+// https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=918402#page=114
 func (c *Card) authenticate(key ManagementKey) error {
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=92
-	// https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=918402#page=114
-
 	// Request a witness
 	resp, err := sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(Alg3DES), keyCardManagement,
 		tlv.New(0x7c,
@@ -79,6 +79,7 @@ func (c *Card) authenticate(key ManagementKey) error {
 }
 
 // authenticateWithPIN uses a PIN protected management key to authenticate
+//
 // https://docs.yubico.com/yesdk/users-manual/application-piv/pin-only.html
 // https://docs.yubico.com/yesdk/users-manual/application-piv/piv-objects.html#pinprotecteddata
 //

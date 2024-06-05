@@ -14,12 +14,14 @@ import (
 )
 
 // Prefix in the x509 Subject Common Name for YubiKey attestations
+//
 // https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
 const yubikeySubjectCNPrefix = "YubiKey PIV Attestation "
 
 // Attestation returns additional information about a key attested to be generated
-// on a card. See https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
-// for more information.
+// on a card.
+//
+// https://developers.yubico.com/PIV/Introduction/PIV_attestation.html
 type Attestation struct {
 	// Version of the YubiKey's firmware.
 	Version iso.Version

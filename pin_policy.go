@@ -58,7 +58,7 @@ func pinPolicy(c *Card, slot Slot) (PINPolicy, error) {
 			// Attestation cert command not supported, probably an older YubiKey.
 			// Guess PINPolicyAlways.
 			//
-			// See https://cunicu.li/go-piv/issues/55
+			// https://github.com/go-piv/piv-go/issues/55
 			return PINPolicyAlways, nil
 		}
 

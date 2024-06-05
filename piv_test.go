@@ -26,7 +26,7 @@ func TestGetVersion(t *testing.T) {
 // as we need a deterministic test outputs to satisfy
 // the expected method call by your mocked smart-card.
 //
-// See: https://github.com/golang/go/issues/38548
+// https://github.com/golang/go/issues/38548
 type constReader struct{}
 
 func (r *constReader) Read(p []byte) (int, error) {

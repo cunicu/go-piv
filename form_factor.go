@@ -36,7 +36,8 @@ func (f FormFactor) String() string {
 	return fmt.Sprintf("unknown(0x%02x)", int(f))
 }
 
-// Formfactors recognized by this package. See the reference for more information:
+// Form factors recognized by this package.
+//
 // https://developers.yubico.com/yubikey-manager/Config_Reference.html#_form_factor
 const (
 	FormFactorUSBAKeychain          = 0x1
