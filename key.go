@@ -122,7 +122,7 @@ func decodePublic(b []byte, alg Algorithm) (pub crypto.PublicKey, err error) {
 	}
 
 	switch alg {
-	case AlgRSA1024, AlgRSA2048:
+	case AlgRSA1024, AlgRSA2048, AlgRSA3072, AlgRSA4096:
 		if pub, err = decodeRSAPublic(tvs); err != nil {
 			return nil, fmt.Errorf("failed to decode RSA public key: %w", err)
 		}
