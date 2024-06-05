@@ -12,43 +12,48 @@ import (
 
 // Metadata holds unprotected metadata about a key slot.
 type Metadata struct {
-	Algorithm   Algorithm
-	PINPolicy   PINPolicy
-	TouchPolicy TouchPolicy
-	Origin      Origin
-	PublicKey   crypto.PublicKey
+	Algorithm        Algorithm
+	PINPolicy        PINPolicy
+	TouchPolicy      TouchPolicy
+	Origin           Origin
+	PublicKey        crypto.PublicKey
+	RetriesTotal     int
+	RetriesRemaining int
+	IsDefault        bool
 }
 
 //nolint:gocognit
 func (ki *Metadata) unmarshal(tvs tlv.TagValues) (err error) {
 	// Algorithm
-	if v, _, ok := tvs.Get(0x01); ok {
-		if len(v) != 1 {
-			return fmt.Errorf("%w for algorithm", errUnexpectedLength)
+	if v, _, ok := tvs.Get(tagMetadataAlgo); ok {
+		if l := len(v); l != 1 {
+			return fmt.Errorf("%w for algorithm: %d", errUnexpectedLength, l)
 		}
 
 		ki.Algorithm = Algorithm(v[0])
 	}
 
 	// PIN & Touch Policy
-	if v, _, ok := tvs.Get(0x02); ok {
-		if len(v) != 2 {
-			return fmt.Errorf("%w for PIN and touch policy", errUnexpectedLength)
+	if v, _, ok := tvs.Get(tagMetadataPolicy); ok {
+		if l := len(v); l != 2 {
+			return fmt.Errorf("%w for PIN and touch policy: %d", errUnexpectedLength, l)
 		}
 
 		if ki.PINPolicy, ok = pinPolicyMapInv[v[0]]; !ok {
-			return errUnsupportedPinPolicy
+			if v[0] > 0 { // SlotCardManagement has no PIN policy
+				return fmt.Errorf("%w: %x", errUnsupportedPinPolicy, v[0])
+			}
 		}
 
 		if ki.TouchPolicy, ok = touchPolicyMapInv[v[1]]; !ok {
-			return errUnsupportedTouchPolicy
+			return fmt.Errorf("%w: %x", errUnsupportedTouchPolicy, v[1])
 		}
 	}
 
 	// Origin
-	if v, _, ok := tvs.Get(0x03); ok {
-		if len(v) != 1 {
-			return fmt.Errorf("%w for origin", errUnexpectedLength)
+	if v, _, ok := tvs.Get(tagMetadataOrigin); ok {
+		if l := len(v); l != 1 {
+			return fmt.Errorf("%w for origin: %d", errUnexpectedLength, l)
 		}
 
 		if ki.Origin, ok = originMapInv[v[0]]; !ok {
@@ -57,30 +62,31 @@ func (ki *Metadata) unmarshal(tvs tlv.TagValues) (err error) {
 	}
 
 	// Public Key
-	if v, _, ok := tvs.Get(0x04); ok {
+	if v, _, ok := tvs.Get(tagMetadataPublicKey); ok {
 		ki.PublicKey, err = decodePublic(v, ki.Algorithm)
 		if err != nil {
 			return fmt.Errorf("failed to parse public key: %w", err)
 		}
 	}
 
-	// TODO: According to the Yubico website, we get two more fields,
-	// if we pass 0x80 or 0x81 as slots:
-	//     1. Default value (for PIN/PUK and management key): Whether the
-	//        default value is used.
-	//     2. Retries (for PIN/PUK): The number of retries remaining
-	// However, it seems the reference implementation does not expect
-	// these and can not parse them out:
-	// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-2.3.1/lib/util.c#L1529
-	// For now, we just ignore them.
+	// Has default value
+	if v, _, ok := tvs.Get(tagMetadataIsDefault); ok {
+		if l := len(v); l != 1 {
+			return fmt.Errorf("%w for default value: %d", errUnexpectedLength, l)
+		}
 
-	// Default Value
-	// if _, v, ok := tvs.Get(0x05); ok {
-	// }
+		ki.IsDefault = v[0] != 0
+	}
 
-	// Retries
-	// if _, v, ok := tvs.Get(0x06); ok {
-	// }
+	// Number of retries left
+	if v, _, ok := tvs.Get(tagMetadataRetries); ok {
+		if l := len(v); l != 2 {
+			return fmt.Errorf("%w for retries: %d", errUnexpectedLength, l)
+		}
+
+		ki.RetriesTotal = int(v[0])
+		ki.RetriesRemaining = int(v[1])
+	}
 
 	return nil
 }
