@@ -325,6 +325,10 @@ go-piv has been forked from [go-piv/piv-go](https://github.com/go-piv/piv-go) at
 * Eric Chiang ([@ericchiang](https://github.com/ericchiang))
 * Steffen Vogel ([@stv0g](https://github.com/stv0g))
 
+## Contact
+
+Please have a look at the contact page: [cunicu.li/docs/contact](https://cunicu.li/docs/contact).
+
 ## License
 
 go-piv is licensed under the [Apache 2.0](./LICENSE) license.
