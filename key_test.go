@@ -293,7 +293,7 @@ func TestPrivateKeyPINError(t *testing.T) {
 
 		auth := KeyAuth{
 			PINPrompt: func() (string, error) {
-				return "", errors.New("test error") //nolint:goerr113
+				return "", errors.New("test error") //nolint:err113
 			},
 		}
 
