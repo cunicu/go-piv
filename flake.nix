@@ -5,19 +5,22 @@
     flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
-  outputs = {
-    self,
-    nixpkgs,
-    flake-utils,
-  }:
-    flake-utils.lib.eachDefaultSystem
-    (
-      system: let
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
         pkgs = nixpkgs.legacyPackages.${system};
         frameworks = pkgs.darwin.apple_sdk.frameworks;
-      in {
+      in
+      {
         devShell = pkgs.mkShell {
-          buildInputs = with pkgs;
+          buildInputs =
+            with pkgs;
             [
               pkg-config
               clang
@@ -29,19 +32,20 @@
               pcsclite
               pcsctools
             ]
-            ++ lib.optionals pkgs.stdenv.isDarwin [
-              frameworks.PCSC
-            ];
+            ++ lib.optionals pkgs.stdenv.isDarwin [ frameworks.PCSC ];
 
           shellHook =
-            if pkgs.stdenv.isDarwin
-            then ''
-              export CGO_LDFLAGS="-F${frameworks.PCSC}/Library/Frameworks";
-            ''
-            else "";
+            if pkgs.stdenv.isDarwin then
+              ''
+                export CGO_LDFLAGS="-F${frameworks.PCSC}/Library/Frameworks";
+              ''
+            else
+              "";
+
+          hardeningDisable = [ "fortify" ];
         };
 
-        formatter = nixpkgs.nixnixfmt-rfc-style;
+        formatter = pkgs.nixfmt-rfc-style;
       }
     );
 }
