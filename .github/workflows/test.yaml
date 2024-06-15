@@ -39,11 +39,11 @@ jobs:
         check-latest: true
 
     - name: Lint
-      # TODO: golangci-lint v1.54 is currently broken on Windows?
+      # TODO: golangci-lint is currently broken on Windows?
       if: matrix.os != 'windows-latest'
       uses: golangci/golangci-lint-action@v6
       with:
-        version: v1.54.0
+        version: v1.59.1
       continue-on-error: true
 
     - name: Set up gotestfmt
