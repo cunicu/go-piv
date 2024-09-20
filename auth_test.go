@@ -52,20 +52,24 @@ func TestAuthenticate(t *testing.T) {
 }
 
 func TestSetManagementKey(t *testing.T) {
-	withCard(t, false, false, nil, func(t *testing.T, c *Card) {
-		var mgmtKey ManagementKey
-		_, err := io.ReadFull(c.Rand, mgmtKey[:])
-		require.NoError(t, err, "Failed to generate management key")
+	for _, alg := range []Algorithm{Alg3DES, AlgAES128, AlgAES192, AlgAES256} {
+		t.Run(alg.String(), func(t *testing.T) {
+			withCard(t, false, false, nil, func(t *testing.T, c *Card) {
+				var mgmtKey ManagementKey
+				_, err := io.ReadFull(c.Rand, mgmtKey[:])
+				require.NoError(t, err, "Failed to generate management key")
 
-		err = c.SetManagementKey(DefaultManagementKey, mgmtKey, false)
-		require.NoError(t, err, "Failed to set management key")
+				err = c.SetManagementKey(DefaultManagementKey, mgmtKey, false, alg)
+				require.NoError(t, err, "Failed to set management key")
 
-		err = c.authenticate(mgmtKey)
-		assert.NoError(t, err, "Failed to authenticate with new management key")
+				err = c.authenticate(mgmtKey)
+				assert.NoError(t, err, "Failed to authenticate with new management key")
 
-		err = c.SetManagementKey(mgmtKey, DefaultManagementKey, false)
-		require.NoError(t, err, "Failed to reset management key")
-	})
+				err = c.SetManagementKey(mgmtKey, DefaultManagementKey, false, alg)
+				require.NoError(t, err, "Failed to reset management key")
+			})
+		})
+	}
 }
 
 func TestUnblockPIN(t *testing.T) {
@@ -134,13 +138,13 @@ func TestChangeManagementKey(t *testing.T) {
 			}
 		}
 
-		err = c.SetManagementKey(newKey, newKey, false)
+		err = c.SetManagementKey(newKey, newKey, false, Alg3DES)
 		assert.Error(t, err, "Successfully changed management key with invalid key, expected error")
 
-		err = c.SetManagementKey(DefaultManagementKey, newKey, false)
+		err = c.SetManagementKey(DefaultManagementKey, newKey, false, Alg3DES)
 		require.NoError(t, err, "Failed to change management key")
 
-		err = c.SetManagementKey(newKey, DefaultManagementKey, false)
+		err = c.SetManagementKey(newKey, DefaultManagementKey, false, Alg3DES)
 		require.NoError(t, err, "Failed to reset management key")
 	})
 }

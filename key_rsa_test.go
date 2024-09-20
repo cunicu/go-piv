@@ -23,17 +23,16 @@ import (
 
 func TestSignRSA(t *testing.T) {
 	tests := []struct {
-		name string
 		alg  Algorithm
 		long bool
 	}{
-		{"RSA/1024", AlgRSA1024, false},
-		{"RSA/2048", AlgRSA2048, true},
-		{"RSA/3072", AlgRSA3072, true},
-		{"RSA/4096", AlgRSA4096, true},
+		{AlgRSA1024, false},
+		{AlgRSA2048, true},
+		{AlgRSA3072, true},
+		{AlgRSA4096, true},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.alg.String(), func(t *testing.T) {
 			withCard(t, false, test.long, nil, func(t *testing.T, c *Card) {
 				slot := SlotAuthentication
 				key := Key{
@@ -66,17 +65,16 @@ func TestSignRSA(t *testing.T) {
 
 func TestSignRSAPSS(t *testing.T) {
 	tests := []struct {
-		name string
 		alg  Algorithm
 		long bool
 	}{
-		{"RSA/1024", AlgRSA1024, false},
-		{"RSA/2048", AlgRSA2048, true},
-		{"RSA/3072", AlgRSA3072, true},
-		{"RSA/4096", AlgRSA4096, true},
+		{AlgRSA1024, false},
+		{AlgRSA2048, true},
+		{AlgRSA3072, true},
+		{AlgRSA4096, true},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.alg.String(), func(t *testing.T) {
 			withCard(t, false, test.long, nil, func(t *testing.T, c *Card) {
 				slot := SlotAuthentication
 				key := Key{
@@ -108,49 +106,43 @@ func TestSignRSAPSS(t *testing.T) {
 	}
 }
 
-func TestSetRSAPrivateKey(t *testing.T) {
+func TestSetPrivateKeyRSA(t *testing.T) {
 	tests := []struct {
-		name    string
-		bits    int
+		alg     Algorithm
 		slot    Slot
 		wantErr error
 	}{
 		{
-			name:    "RSA/1024",
-			bits:    1024,
+			alg:     AlgRSA1024,
 			slot:    SlotSignature,
 			wantErr: nil,
 		},
 		{
-			name:    "RSA/2048",
-			bits:    2048,
+			alg:     AlgRSA2048,
 			slot:    SlotCardAuthentication,
 			wantErr: nil,
 		},
 		{
-			name:    "RSA/3072",
-			bits:    3072,
+			alg:     AlgRSA3072,
 			slot:    SlotAuthentication,
 			wantErr: nil,
 		},
 		{
-			name:    "RSA/4096",
-			bits:    4096,
+			alg:     AlgRSA4096,
 			slot:    SlotAuthentication,
 			wantErr: nil,
 		},
 		{
-			name:    "RSA/512",
-			bits:    512,
+			alg:     algRSA512,
 			slot:    SlotKeyManagement,
 			wantErr: errUnsupportedKeySize,
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.alg.String(), func(t *testing.T) {
 			withCard(t, false, false, nil, func(t *testing.T, c *Card) {
-				key := testKey(t, AlgTypeRSA, test.bits)
+				key := testKey(t, test.alg)
 				generated, ok := key.(*rsa.PrivateKey)
 				require.True(t, ok)
 

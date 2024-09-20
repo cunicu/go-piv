@@ -142,6 +142,11 @@ func decodePublic(b []byte, alg Algorithm) (pub crypto.PublicKey, err error) {
 			return nil, fmt.Errorf("failed to decode Ed25519 public key: %w", err)
 		}
 
+	case AlgX25519:
+		if pub, err = decodeX25519Public(tvs); err != nil {
+			return nil, fmt.Errorf("failed to decode X25519 public key: %w", err)
+		}
+
 	default:
 		return nil, errUnsupportedAlgorithm
 	}
@@ -183,6 +188,9 @@ func (c *Card) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) (cry
 
 	case ed25519.PublicKey:
 		return &keyEd25519{c, slot, pub, auth, pp}, nil
+
+	case *ecdh.PublicKey:
+		return &keyX25519{c, slot, pub, auth, pp}, nil
 
 	case *rsa.PublicKey:
 		return &keyRSA{c, slot, pub, auth, pp}, nil
@@ -283,6 +291,16 @@ func (c *Card) SetPrivateKeyInsecure(key ManagementKey, slot Slot, private crypt
 
 		tvs = append(tvs, tlv.New(0x06, pad(elemLen, priv.D.Bytes()))) // S value
 
+	case *ed25519.PrivateKey:
+		tvs = append(tvs, tlv.New(0x07, priv.Seed()))
+
+	case *ecdh.PrivateKey:
+		if priv.Curve() != ecdh.X25519() {
+			return UnsupportedCurveError{}
+		}
+
+		tvs = append(tvs, tlv.New(0x08, priv.Bytes()))
+
 	default:
 		return errUnsupportedKeyType
 	}
@@ -301,13 +319,13 @@ func (c *Card) SetPrivateKeyInsecure(key ManagementKey, slot Slot, private crypt
 //
 // This enables retaining retired encryption keys on the device to decrypt older messages.
 //
-// Note: This is a YubiKey specific extension to PIV. Its supported by YubiKeys with firmware 5.7 or newer.
+// Note: This is a YubiKey specific extension to PIV. Its supported by YubiKeys with firmware 5.7.0 or newer.
 func (c *Card) MoveKey(key ManagementKey, from, to Slot) error {
 	if err := c.authenticate(key); err != nil {
 		return fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
 
-	_, err := send(c.tx, insMoveDeleteKey, from.Key, to.Key, nil)
+	_, err := send(c.tx, insMoveDeleteKey, to.Key, from.Key, nil)
 
 	return err
 }
@@ -316,7 +334,7 @@ func (c *Card) MoveKey(key ManagementKey, from, to Slot) error {
 //
 // This enables destroying key material without overwriting with bogus data or resetting the PIV application.
 //
-// Note: This is a YubiKey specific extension to PIV. Its supported by YubiKeys with firmware 5.7 or newer.
+// Note: This is a YubiKey specific extension to PIV. Its supported by YubiKeys with firmware 5.7.0 or newer.
 func (c *Card) DeleteKey(key ManagementKey, slot Slot) error {
 	return c.MoveKey(key, slot, SlotGraveyard)
 }

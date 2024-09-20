@@ -5,6 +5,8 @@ package piv
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/des" //nolint:gosec
 	"errors"
 	"fmt"
@@ -25,8 +27,13 @@ var errFailedToGenerateKey = errors.New("failed to generate random key")
 // https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=92
 // https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=918402#page=114
 func (c *Card) authenticate(key ManagementKey) error {
+	meta, err := c.Metadata(SlotCardManagement)
+	if err != nil {
+		return fmt.Errorf("failed to get management key metadata: %w", err)
+	}
+
 	// Request a witness
-	resp, err := sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(Alg3DES), keyCardManagement,
+	resp, err := sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(meta.Algorithm), keyCardManagement,
 		tlv.New(0x7c,
 			tlv.New(0x80),
 		),
@@ -35,30 +42,41 @@ func (c *Card) authenticate(key ManagementKey) error {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
 
+	var block cipher.Block
+
+	switch meta.Algorithm {
+	case Alg3DES:
+		block, err = des.NewTripleDESCipher(key[:]) //nolint:gosec
+
+	case AlgAES128, AlgAES192, AlgAES256:
+		block, err = aes.NewCipher(key[:])
+
+	default:
+		return errUnsupportedKeyType
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create block cipher: %w", err)
+	}
+
 	cardChallenge, _, ok := resp.GetChild(0x7c, 0x80)
 	if !ok {
 		return errUnmarshal
-	} else if len(cardChallenge) != 8 {
-		return errUnexpectedLength
+	} else if len(cardChallenge) != block.BlockSize() {
+		return fmt.Errorf("%w: %d", errUnexpectedLength, len(cardChallenge))
 	}
 
-	block, err := des.NewTripleDESCipher(key[:]) //nolint:gosec
-	if err != nil {
-		return fmt.Errorf("failed to create triple des block cipher: %w", err)
-	}
-
-	cardResponse := make([]byte, 8)
+	cardResponse := make([]byte, block.BlockSize())
 	block.Decrypt(cardResponse, cardChallenge)
 
-	challenge := make([]byte, 8)
+	challenge := make([]byte, block.BlockSize())
 	if _, err := io.ReadFull(c.Rand, challenge); err != nil {
 		return fmt.Errorf("failed to read random data: %w", err)
 	}
 
-	response := make([]byte, 8)
+	response := make([]byte, block.BlockSize())
 	block.Encrypt(response, challenge)
 
-	if resp, err = sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(Alg3DES), keyCardManagement,
+	if resp, err = sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(meta.Algorithm), keyCardManagement,
 		tlv.New(0x7c,
 			tlv.New(0x80, cardResponse),
 			tlv.New(0x81, challenge),
@@ -69,7 +87,7 @@ func (c *Card) authenticate(key ManagementKey) error {
 
 	if cardResponse, _, ok = resp.GetChild(0x7c, 0x82); !ok {
 		return errUnmarshal
-	} else if len(cardResponse) != 8 {
+	} else if len(cardResponse) != block.BlockSize() {
 		return errUnexpectedLength
 	} else if !bytes.Equal(cardResponse, response) {
 		return errChallengeFailed
@@ -109,7 +127,7 @@ func (c *Card) authenticateWithPIN(pin string) error {
 //	if err := c.SetManagementKey(piv.DefaultManagementKey, newKey); err != nil {
 //		// ...
 //	}
-func (c *Card) SetManagementKey(oldKey, newKey ManagementKey, requireTouch bool) error {
+func (c *Card) SetManagementKey(oldKey, newKey ManagementKey, requireTouch bool, alg Algorithm) error {
 	if err := c.authenticate(oldKey); err != nil {
 		return fmt.Errorf("failed to authenticate with old key: %w", err)
 	}
@@ -120,7 +138,7 @@ func (c *Card) SetManagementKey(oldKey, newKey ManagementKey, requireTouch bool)
 	}
 
 	if _, err := send(c.tx, insSetManagementKey, 0xff, p2, append([]byte{
-		byte(Alg3DES), keyCardManagement, 24,
+		byte(alg), keyCardManagement, 24,
 	}, newKey[:]...)); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
@@ -130,7 +148,7 @@ func (c *Card) SetManagementKey(oldKey, newKey ManagementKey, requireTouch bool)
 
 // https://docs.yubico.com/yesdk/users-manual/application-piv/pin-only.html
 // https://docs.yubico.com/yesdk/users-manual/application-piv/piv-objects.html#pinprotecteddata
-func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string, requireTouch bool) error {
+func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string, requireTouch bool, alg Algorithm) error {
 	var newKey ManagementKey
 
 	if n, err := c.Rand.Read(newKey[:]); err != nil {
@@ -152,7 +170,7 @@ func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string, re
 		return err
 	}
 
-	return c.SetManagementKey(oldKey, newKey, requireTouch)
+	return c.SetManagementKey(oldKey, newKey, requireTouch, alg)
 }
 
 // SetPIN updates the PIN to a new value. For compatibility, PINs should be 1-8

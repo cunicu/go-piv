@@ -1,0 +1,23 @@
+mockfile
+
+file version v3
+file created 2024-06-05T18:39:22+02:00
+file creator stv0g@cam
+
+meta status.active_protocol t1,any
+meta status.atr 3bfd1300008131fe158073c021c057597562694b657940
+meta status.reader Yubico YubiKey OTP+FIDO+CCID
+meta status.state powered,specific,present
+meta yubikey.serial 29173673
+meta yubikey.version 5.7.1
+
+#     start      end method
+on    0.000    0.000 BeginTransaction
+on    0.061    0.061 Transmit 00a4040009a0000003080000100000 61114f0600001000010079074f05a0000003089000
+on    0.692    0.692 Transmit 00fd0000 0507019000
+on    1.703    1.703 Transmit 002000800830ffffffffffffff 63c2
+on    7.360    7.360 Transmit 002000800830ffffffffffffff 63c1
+on   12.988   12.988 Transmit 002000800830ffffffffffffff 6983
+on   18.803   18.803 Transmit 002c0080103132333435363738313233343536ffff 9000
+on   48.357   48.357 Transmit 0020008008313233343536ffff 9000
+on   58.051   58.051 EndTransaction
