@@ -154,7 +154,8 @@ func (c *Card) Serial() (uint32, error) {
 
 		defer c.Select(iso.AidPIV) //nolint:errcheck
 
-		return yubikey.GetSerialNumber(c.Card)
+		yk := yubikey.NewCard(c)
+		return yk.SerialNumber()
 	}
 
 	resp, err := send(c.tx, insGetSerial, 0, 0, nil)
