@@ -15,89 +15,100 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestECCPSharedKey(t *testing.T) {
-	withCard(t, false, false, nil, func(t *testing.T, c *Card) {
-		slot := SlotAuthentication
-
-		key := Key{
-			Algorithm:   AlgECCP256,
-			TouchPolicy: TouchPolicyNever,
-			PINPolicy:   PINPolicyNever,
-		}
-		pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
-		require.NoError(t, err, "Failed to generate key")
-
-		pub, ok := pubKey.(*ecdsa.PublicKey)
-		require.True(t, ok, "Public key is not an EC key")
-
-		priv, err := c.PrivateKey(slot, pub, KeyAuth{})
-		require.NoError(t, err, "Failed to get private key")
-
-		privECCP, ok := priv.(*ECPPPrivateKey)
-		require.True(t, ok, "Expected private key to be EC private key")
-
-		t.Run("good", func(t *testing.T) {
-			key, ok := testKey(t, AlgTypeECCP, 256).(*ecdsa.PrivateKey)
-			require.True(t, ok)
-
-			mult, _ := pub.ScalarMult(pub.X, pub.Y, key.D.Bytes())
-			secret1 := mult.Bytes()
-
-			secret2, err := privECCP.SharedKey(&key.PublicKey)
-			require.NoError(t, err, "Key agreement failed")
-
-			assert.Equal(t, secret1, secret2, "Key agreement didn't match")
-		})
-
-		t.Run("bad", func(t *testing.T) {
-			t.Run("size", func(t *testing.T) {
-				key, ok := testKey(t, AlgTypeECCP, 384).(*ecdsa.PrivateKey)
-				require.True(t, ok)
-
-				_, err = privECCP.SharedKey(&key.PublicKey)
-				require.ErrorIs(t, err, errMismatchingAlgorithms)
-			})
-		})
-	})
+var testsECC = []struct {
+	alg  Algorithm
+	slot Slot
+}{
+	{
+		alg:  AlgECCP256,
+		slot: SlotAuthentication,
+	},
+	{
+		alg:  AlgECCP384,
+		slot: SlotAuthentication,
+	},
 }
 
-func TestSetECCPPrivateKey(t *testing.T) {
+func TestSharedKeyECC(t *testing.T) {
+	for _, test := range testsECC {
+		t.Run(test.alg.String(), func(t *testing.T) {
+			withCard(t, false, false, SupportsAlgorithm(test.alg), func(t *testing.T, c *Card) {
+				key := Key{
+					Algorithm:   test.alg,
+					TouchPolicy: TouchPolicyNever,
+					PINPolicy:   PINPolicyNever,
+				}
+				pubKey, err := c.GenerateKey(DefaultManagementKey, test.slot, key)
+				require.NoError(t, err, "Failed to generate key")
+
+				pub, ok := pubKey.(*ecdsa.PublicKey)
+				require.True(t, ok, "Public key is not an EC key")
+
+				priv, err := c.PrivateKey(test.slot, pub, KeyAuth{})
+				require.NoError(t, err, "Failed to get private key")
+
+				privECCP, ok := priv.(*ECPPPrivateKey)
+				require.True(t, ok, "Expected private key to be EC private key")
+
+				t.Run("good", func(t *testing.T) {
+					key, ok := testKey(t, test.alg).(*ecdsa.PrivateKey)
+					require.True(t, ok)
+
+					mult, _ := pub.ScalarMult(pub.X, pub.Y, key.D.Bytes())
+					secret1 := mult.Bytes()
+
+					secret2, err := privECCP.SharedKey(&key.PublicKey)
+					require.NoError(t, err, "Key agreement failed")
+
+					assert.Equal(t, secret1, secret2, "Key agreement didn't match")
+				})
+
+				t.Run("bad", func(t *testing.T) {
+					t.Run("size", func(t *testing.T) {
+						key, ok := testKey(t, AlgECCP384).(*ecdsa.PrivateKey)
+						require.True(t, ok)
+
+						_, err = privECCP.SharedKey(&key.PublicKey)
+						require.ErrorIs(t, err, errMismatchingAlgorithms)
+					})
+				})
+			})
+		})
+	}
+}
+
+func TestSetPrivateKeyECC(t *testing.T) {
 	tests := []struct {
-		name    string
-		bits    int
+		alg     Algorithm
 		slot    Slot
 		wantErr error
 	}{
 		{
-			name:    "EC/P256",
-			bits:    256,
+			alg:     AlgECCP256,
 			slot:    SlotSignature,
 			wantErr: nil,
 		},
 		{
-			name:    "EC/P384",
-			bits:    384,
+			alg:     AlgECCP384,
 			slot:    SlotCardAuthentication,
 			wantErr: nil,
 		},
 		{
-			name:    "EC/P224",
-			bits:    224,
+			alg:     algECCP224,
 			slot:    SlotAuthentication,
 			wantErr: UnsupportedCurveError{curve: 224},
 		},
 		{
-			name:    "EC/P521",
-			bits:    521,
+			alg:     algECCP521,
 			slot:    SlotKeyManagement,
 			wantErr: UnsupportedCurveError{curve: 521},
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.alg.String(), func(t *testing.T) {
 			withCard(t, false, false, nil, func(t *testing.T, c *Card) {
-				generated, ok := testKey(t, AlgTypeECCP, test.bits).(*ecdsa.PrivateKey)
+				generated, ok := testKey(t, test.alg).(*ecdsa.PrivateKey)
 				require.True(t, ok)
 
 				err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, generated, Key{
@@ -128,41 +139,43 @@ func TestSetECCPPrivateKey(t *testing.T) {
 	}
 }
 
-func TestSignECCP(t *testing.T) {
-	withCard(t, false, false, nil, func(t *testing.T, c *Card) {
-		err := c.Reset()
-		require.NoError(t, err, "Failed to reset applet")
+func TestSignECC(t *testing.T) {
+	for _, test := range testsECC {
+		t.Run(test.alg.String(), func(t *testing.T) {
+			withCard(t, false, false, SupportsAlgorithm(test.alg), func(t *testing.T, c *Card) {
+				err := c.Reset()
+				require.NoError(t, err, "Failed to reset applet")
 
-		slot := SlotAuthentication
+				key := Key{
+					Algorithm:   test.alg,
+					TouchPolicy: TouchPolicyNever,
+					PINPolicy:   PINPolicyNever,
+				}
+				pubKey, err := c.GenerateKey(DefaultManagementKey, test.slot, key)
+				require.NoError(t, err, "Failed to generate key")
 
-		key := Key{
-			Algorithm:   AlgECCP256,
-			TouchPolicy: TouchPolicyNever,
-			PINPolicy:   PINPolicyNever,
-		}
-		pubKey, err := c.GenerateKey(DefaultManagementKey, slot, key)
-		require.NoError(t, err, "Failed to generate key")
+				pub, ok := pubKey.(*ecdsa.PublicKey)
+				require.True(t, ok, "public key is not an EC key")
 
-		pub, ok := pubKey.(*ecdsa.PublicKey)
-		require.True(t, ok, "public key is not an EC key")
+				data := sha256.Sum256([]byte("hello"))
+				priv, err := c.PrivateKey(test.slot, pub, KeyAuth{})
+				require.NoError(t, err, "Failed to get private key")
 
-		data := sha256.Sum256([]byte("hello"))
-		priv, err := c.PrivateKey(slot, pub, KeyAuth{})
-		require.NoError(t, err, "Failed to get private key")
+				s, ok := priv.(crypto.Signer)
+				require.True(t, ok, "expected private key to implement crypto.Signer")
 
-		s, ok := priv.(crypto.Signer)
-		require.True(t, ok, "expected private key to implement crypto.Signer")
+				out, err := s.Sign(c.Rand, data[:], crypto.SHA256)
+				require.NoError(t, err, "Failed to sign")
 
-		out, err := s.Sign(c.Rand, data[:], crypto.SHA256)
-		require.NoError(t, err, "Failed to sign")
+				var sig struct {
+					R, S *big.Int
+				}
+				_, err = asn1.Unmarshal(out, &sig)
+				require.NoError(t, err, "Failed to unmarshal signature")
 
-		var sig struct {
-			R, S *big.Int
-		}
-		_, err = asn1.Unmarshal(out, &sig)
-		require.NoError(t, err, "Failed to unmarshal signature")
-
-		verified := ecdsa.Verify(pub, data[:], sig.R, sig.S)
-		assert.True(t, verified, "Signature didn't match")
-	})
+				verified := ecdsa.Verify(pub, data[:], sig.R, sig.S)
+				assert.True(t, verified, "Signature didn't match")
+			})
+		})
+	}
 }

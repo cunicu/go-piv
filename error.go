@@ -33,7 +33,7 @@ func wrapCode(err error) error {
 		// Older YubiKeys sometimes return sw1=0x63 and sw2=0x0N to indicate the
 		// number of retries. This isn't spec compliant, but support it anyway.
 		//
-		// https://cunicu.li/go-piv/issues/60
+		// https://github.com/go-piv/piv-go/issues/60
 		return AuthError{int(c[1] & 0xf)}
 
 	default:

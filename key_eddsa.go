@@ -25,17 +25,17 @@ func (k *keyEd25519) Public() crypto.PublicKey {
 	return k.pub
 }
 
-// This function only works on SoloKeys prototypes and other PIV devices that choose
-// to implement Ed25519 signatures under alg 0x22.
+// This function only works on YubiKeys with firmware version 5.7.0 and higher as well
+// as SoloKeys prototypes and other PIV devices that choose to implement Ed25519
+// signatures under algorithm type 0xE0 / 0x22.
 func (k *keyEd25519) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
 	return k.auth.do(k.c, k.pp, func(tx *iso.Transaction) ([]byte, error) {
 		return signEd25519(tx, k.slot, digest)
 	})
 }
 
+// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 func decodeEd25519Public(tvs tlv.TagValues) (ed25519.PublicKey, error) {
-	// Adaptation of
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=95
 	p, _, ok := tvs.Get(0x86)
 	if !ok {
 		return nil, fmt.Errorf("%w points", errUnmarshal)
@@ -48,9 +48,8 @@ func decodeEd25519Public(tvs tlv.TagValues) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(p), nil
 }
 
+// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=118
 func signEd25519(tx *iso.Transaction, slot Slot, data []byte) ([]byte, error) {
-	// Adaptation of
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=118
 	resp, err := sendTLV(tx, iso.InsGeneralAuthenticate, byte(AlgEd25519), slot.Key,
 		tlv.New(0x7c,
 			tlv.New(0x82),

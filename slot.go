@@ -8,6 +8,19 @@ import (
 	"strings"
 )
 
+// Slot is a private key and certificate combination managed by the security key.
+type Slot struct {
+	// Key is a reference for a key type.
+	//
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=32
+	Key byte
+
+	// Object is a reference for data object.
+	//
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=30
+	Object Object
+}
+
 func parseSlot(commonName string) (Slot, bool) {
 	if !strings.HasPrefix(commonName, yubikeySubjectCNPrefix) {
 		return Slot{}, false
@@ -52,7 +65,11 @@ var (
 	SlotKeyManagement      = Slot{keyKeyManagement, doCertKeyManagement}
 
 	// YubiKey specific
-	SlotAttestation = Slot{keyAttestation, doCertAttestation}
+	SlotAttestation    = Slot{keyAttestation, doCertAttestation}
+	SlotPIN            = Slot{Key: keyPIN}
+	SlotPUK            = Slot{Key: keyPUK}
+	SlotCardManagement = Slot{Key: keyCardManagement}
+	SlotGraveyard      = Slot{Key: 0xff} // Moving a key to this slot will destroy it
 )
 
 // SlotRetiredKeyManagement provides access to "retired" slots. Slots meant for old Key Management
