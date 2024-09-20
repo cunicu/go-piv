@@ -25,8 +25,9 @@ func (k *keyEd25519) Public() crypto.PublicKey {
 	return k.pub
 }
 
-// This function only works on SoloKeys prototypes and other PIV devices that choose
-// to implement Ed25519 signatures under alg 0x22.
+// This function only works on YubiKeys with firmware version 5.7.0 and higher as well
+// as SoloKeys prototypes and other PIV devices that choose to implement Ed25519
+// signatures under algorithm type 0xE0 / 0x22.
 func (k *keyEd25519) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
 	return k.auth.do(k.c, k.pp, func(tx *iso.Transaction) ([]byte, error) {
 		return signEd25519(tx, k.slot, digest)

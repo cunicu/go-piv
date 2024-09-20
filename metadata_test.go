@@ -18,73 +18,73 @@ func TestMetadata(t *testing.T) {
 		importKey bool
 	}{
 		{
-			"EC/P256/Generated",
+			"EC-P256/Generated",
 			SlotAuthentication,
 			Key{AlgECCP256, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"EC/P384/Generated",
+			"EC-P384/Generated",
 			SlotAuthentication,
 			Key{AlgECCP384, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"RSA/1024/Generated",
+			"RSA-1024/Generated",
 			SlotAuthentication,
 			Key{AlgRSA1024, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"RSA/2048/Generated",
+			"RSA-2048/Generated",
 			SlotAuthentication,
 			Key{AlgRSA2048, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"RSA/3072/Generated",
+			"RSA-3072/Generated",
 			SlotAuthentication,
 			Key{AlgRSA3072, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"RSA/4096/Generated",
+			"RSA-4096/Generated",
 			SlotAuthentication,
 			Key{AlgRSA4096, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"EC/P256/Imported",
+			"EC-P256/Imported",
 			SlotAuthentication,
 			Key{AlgECCP256, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
-			"EC/P384/Imported",
+			"EC-P384/Imported",
 			SlotAuthentication,
 			Key{AlgECCP384, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
-			"RSA/1024/Imported",
+			"RSA-1024/Imported",
 			SlotAuthentication,
 			Key{AlgRSA1024, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
-			"RSA/2048/Imported",
+			"RSA-2048/Imported",
 			SlotAuthentication,
 			Key{AlgRSA2048, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
-			"RSA/3072/Imported",
+			"RSA-3072/Imported",
 			SlotAuthentication,
 			Key{AlgRSA3072, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
-			"RSA/4096/Imported",
+			"RSA-4096/Imported",
 			SlotAuthentication,
 			Key{AlgRSA4096, PINPolicyNever, TouchPolicyNever},
 			true,
@@ -144,7 +144,7 @@ func TestMetadata(t *testing.T) {
 				}
 
 				if test.importKey {
-					key := testKey(t, test.key.Algorithm.algType(), test.key.Algorithm.bits())
+					key := testKey(t, test.key.Algorithm)
 
 					err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, key, test.key)
 					require.NoError(t, err, "importing key")

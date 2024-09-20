@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"cunicu.li/go-iso7816/filter"
+	"cunicu.li/go-iso7816"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -85,17 +85,16 @@ func TestPINPrompt(t *testing.T) {
 
 func TestDecryptRSA(t *testing.T) {
 	tests := []struct {
-		name string
 		alg  Algorithm
 		long bool
 	}{
-		{"RSA/1024", AlgRSA1024, false},
-		{"RSA/2048", AlgRSA2048, true},
-		{"RSA/3072", AlgRSA3072, true},
-		{"RSA/4096", AlgRSA4096, true},
+		{AlgRSA1024, false},
+		{AlgRSA2048, true},
+		{AlgRSA3072, true},
+		{AlgRSA4096, true},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.alg.String(), func(t *testing.T) {
 			withCard(t, false, test.long, nil, func(t *testing.T, c *Card) {
 				slot := SlotAuthentication
 				key := Key{
@@ -133,7 +132,7 @@ func TestStoreCertificate(t *testing.T) {
 	withCard(t, false, false, nil, func(t *testing.T, c *Card) {
 		slot := SlotAuthentication
 
-		caPriv := testKey(t, AlgTypeECCP, 256)
+		caPriv := testKey(t, AlgECCP256)
 
 		// Generate a self-signed certificate
 		caTmpl := &x509.Certificate{
@@ -199,47 +198,34 @@ func TestStoreCertificate(t *testing.T) {
 
 func TestGenerateKey(t *testing.T) {
 	tests := []struct {
-		name string
 		alg  Algorithm
-		bits int
 		long bool
 	}{
 		{
-			name: "EC/P256",
-			alg:  AlgECCP256,
+			alg: AlgECCP256,
 		},
 		{
-			name: "EC/P384",
-			alg:  AlgECCP384,
+			alg: AlgECCP384,
 		},
 		{
-			name: "RSA/1024",
-			alg:  AlgRSA1024,
+			alg: AlgRSA1024,
 		},
 		{
-			name: "RSA/2048",
 			alg:  AlgRSA2048,
 			long: true,
 		},
 		{
-			name: "RSA/3072",
 			alg:  AlgRSA3072,
 			long: true,
 		},
 		{
-			name: "RSA/4096",
 			alg:  AlgRSA4096,
 			long: true,
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var flt filter.Filter
-			if test.alg == AlgECCP384 {
-				flt = SupportsAlgorithmEC384
-			}
-
-			withCard(t, false, test.long, flt, func(t *testing.T, c *Card) {
+		t.Run(test.alg.String(), func(t *testing.T) {
+			withCard(t, false, test.long, SupportsAlgorithm(test.alg), func(t *testing.T, c *Card) {
 				key := Key{
 					Algorithm:   test.alg,
 					TouchPolicy: TouchPolicyNever,
@@ -402,4 +388,74 @@ func TestVerify(t *testing.T) {
 			assert.Equal(t, (err == nil), test.ok, "Verify returned %v, expected test outcome %v", err, test.ok)
 		})
 	}
+}
+
+func TestMoveKey(t *testing.T) {
+	withCard(t, true, false, SupportsKeyMoveDelete, func(t *testing.T, c *Card) {
+		// Moving non-existing key must fail
+		err := c.MoveKey(DefaultManagementKey, SlotAuthentication, SlotCardAuthentication)
+		require.ErrorIs(t, err, iso7816.ErrReferenceNotFound, "Expected move of non-existing key to fail")
+
+		// Generate key
+		_, err = c.GenerateKey(DefaultManagementKey, SlotAuthentication, Key{
+			Algorithm:   AlgRSA1024,
+			PINPolicy:   PINPolicyNever,
+			TouchPolicy: TouchPolicyNever,
+		})
+		require.NoErrorf(t, err, "Generation of new key failed: %w", err)
+
+		// Check that new key exists
+		m1, err := c.Metadata(SlotAuthentication)
+		require.NoErrorf(t, err, "Failed to retrieve metadata of new key: %w", err)
+		require.Equal(t, m1.Algorithm, AlgRSA1024, "Mismatching algorithm for new key")
+
+		pk1, ok := m1.PublicKey.(*rsa.PublicKey)
+		require.True(t, ok, "Key is not an RSA key")
+
+		// Move key
+		err = c.MoveKey(DefaultManagementKey, SlotAuthentication, SlotCardAuthentication)
+		require.NoErrorf(t, err, "Failed to move key: %w", err)
+
+		// Check key has been removed from source slot
+		_, err = c.Metadata(SlotAuthentication)
+		require.ErrorIs(t, err, iso7816.ErrReferenceNotFound, "Key still exists")
+
+		// Check key is now in the new slot
+		m2, err := c.Metadata(SlotCardAuthentication)
+		require.NoErrorf(t, err, "Failed to retrieve metadata of moved key: %w", err)
+
+		pk2, ok := m2.PublicKey.(*rsa.PublicKey)
+		require.True(t, ok, "Key is not an RSA key")
+
+		require.True(t, pk1.Equal(pk2), "Public keys of moved slot are not equal")
+	})
+}
+
+func TestDeleteKey(t *testing.T) {
+	withCard(t, true, false, SupportsKeyMoveDelete, func(t *testing.T, c *Card) {
+		// Delete non-existing key must fail
+		err := c.DeleteKey(DefaultManagementKey, SlotAuthentication)
+		require.ErrorIs(t, err, iso7816.ErrReferenceNotFound, "Deletion of non-existing key succeeded")
+
+		// Generate key
+		_, err = c.GenerateKey(DefaultManagementKey, SlotAuthentication, Key{
+			Algorithm:   AlgRSA1024,
+			PINPolicy:   PINPolicyNever,
+			TouchPolicy: TouchPolicyNever,
+		})
+		require.NoErrorf(t, err, "Failed to generate key: %w", err)
+
+		// Check that new key exists
+		m, err := c.Metadata(SlotAuthentication)
+		require.NoErrorf(t, err, "Failed to retrieve metadata of new key: %w", err)
+		require.Equal(t, m.Algorithm, AlgRSA1024, "Key is not an RSA key")
+
+		// Delete key
+		err = c.DeleteKey(DefaultManagementKey, SlotAuthentication)
+		require.NoErrorf(t, err, "Failed to delete key: %w", err)
+
+		// Check key has been removed
+		_, err = c.Metadata(SlotAuthentication)
+		require.ErrorIs(t, err, iso7816.ErrReferenceNotFound, "Key has not been removed")
+	})
 }

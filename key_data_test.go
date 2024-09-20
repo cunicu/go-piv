@@ -52,14 +52,14 @@ var (
 // testKey returns a deterministic key for testing
 // We require deterministic keys for reproducible tests
 // in order for the test transcript to match
-func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
+func testKey(t *testing.T, alg Algorithm) (key privateKey) {
 	t.Helper()
 
 	var testKey []byte
 	var err error
-	switch typ {
-	case AlgTypeECCP:
-		switch bits {
+	switch alg {
+	case algECCP224, AlgECCP256, AlgECCP384, algECCP521:
+		switch alg.bits() {
 		case 224:
 			testKey = testKeyEC224
 		case 256:
@@ -68,6 +68,8 @@ func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
 			testKey = testKeyEC384
 		case 521:
 			testKey = testKeyEC521
+		default:
+			t.Fatalf("Unsupported EC curve: P-%d", alg.bits())
 		}
 
 		b, _ := pem.Decode(testKey)
@@ -76,14 +78,14 @@ func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
 		key, err = x509.ParseECPrivateKey(b.Bytes)
 		require.NoError(t, err)
 
-	case AlgTypeEd25519:
+	case AlgEd25519:
 		b, _ := pem.Decode(testKeyEd25519)
 		require.NotNil(t, b)
 		require.Len(t, b.Bytes, 32)
 
 		key = ed25519.PrivateKey(b.Bytes)
 
-	case AlgTypeX25519:
+	case AlgX25519:
 		b, _ := pem.Decode(testKeyX25519)
 		require.NotNil(t, b)
 		require.Len(t, b.Bytes, 32)
@@ -91,8 +93,8 @@ func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
 		key, err = ecdh.X25519().NewPrivateKey(b.Bytes)
 		require.NoError(t, err)
 
-	case AlgTypeRSA:
-		switch bits {
+	case algRSA512, AlgRSA1024, AlgRSA2048, AlgRSA3072, AlgRSA4096:
+		switch alg.bits() {
 		case 512:
 			testKey = testKeyRSA512
 		case 1024:
@@ -103,6 +105,8 @@ func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
 			testKey = testKeyRSA3072
 		case 4096:
 			testKey = testKeyRSA4096
+		default:
+			t.Fatalf("Unsupported RSA modulus length: %d", alg.bits())
 		}
 
 		b, _ := pem.Decode(testKey)
@@ -112,7 +116,7 @@ func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
 		require.NoError(t, err)
 
 	default:
-		t.Fatalf("ephemeral key: unknown algorithm")
+		t.Fatalf("test key: unknown algorithm: %s", alg)
 	}
 
 	return key
