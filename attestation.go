@@ -62,7 +62,7 @@ func (a *Attestation) addExt(e pkix.Extension) error {
 		if serial < 0 {
 			return fmt.Errorf("%w: is negative %d", errInvalidSerialNumber, serial)
 		}
-		a.Serial = uint32(serial)
+		a.Serial = uint32(serial) //nolint:gosec
 	case e.Id.Equal(extIDKeyPolicy):
 		if len(e.Value) != 2 {
 			return fmt.Errorf("%w for key policy: got=%dB, want=2B", errUnexpectedLength, len(e.Value))

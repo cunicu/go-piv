@@ -70,7 +70,7 @@ func withCard(t *testing.T, reset, long bool, extraFilter filter.Filter, cb func
 }
 
 func TestNewCard(t *testing.T) {
-	withCard(t, false, false, nil, func(t *testing.T, c *Card) {})
+	withCard(t, false, false, nil, func(_ *testing.T, _ *Card) {})
 }
 
 func TestMultipleConnections(t *testing.T) {

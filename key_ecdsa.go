@@ -63,7 +63,7 @@ func (k *ECPPPrivateKey) SharedKey(peer *ecdsa.PublicKey) ([]byte, error) {
 		return nil, fmt.Errorf("failed to convert key: %w", err)
 	}
 
-	return k.auth.do(k.c, k.pp, func(tx *iso.Transaction) ([]byte, error) {
+	return k.auth.do(k.c, k.pp, func(_ *iso.Transaction) ([]byte, error) {
 		var alg Algorithm
 		size := k.pub.Params().BitSize
 		switch size {
