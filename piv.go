@@ -14,14 +14,14 @@ import (
 	"math/big"
 
 	iso "cunicu.li/go-iso7816"
-	"cunicu.li/go-iso7816/devices/yubikey"
+	yk "cunicu.li/go-iso7816/devices/yubikey"
 	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
 var (
 	errChallengeFailed  = errors.New("challenge failed")
 	errExpectedError    = errors.New("expected error")
-	errInvalidPinLength = errors.New("invalid pin length")
+	errInvalidPinLength = errors.New("invalid PIN length")
 )
 
 const (
@@ -54,6 +54,8 @@ const (
 	tagAlg = 0x80
 
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-78-4.pdf#page=16
+	keyPIN                = 0x80
+	keyPUK                = 0x81
 	keyAuthentication     = 0x9a
 	keyCardManagement     = 0x9b
 	keySignature          = 0x9c
@@ -61,16 +63,15 @@ const (
 	keyCardAuthentication = 0x9e
 	keyAttestation        = 0xf9
 
-	// TODO: Figure out why these are different from iso7816 ins.
+	// TODO: Figure out why these are different from iso7816 instructions.
 	insGenerateAsymmetric = 0x47
 	insGetData            = 0xcb
 	insPutData            = 0xdb
 
 	// Yubico PIV extensions
 	//
-	// See:
-	// - https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html
-	// - https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.h#L656
+	// https://developers.yubico.com/PIV/Introduction/Yubico_extensions.html
+	// https://github.com/Yubico/yubico-piv-tool/blob/yubico-piv-tool-1.7.0/lib/ykpiv.h#L656
 	insSetManagementKey = 0xff
 	insImportKey        = 0xfe
 	insGetVersion       = 0xfd
@@ -79,6 +80,7 @@ const (
 	insAttest           = 0xf9
 	insGetSerial        = 0xf8
 	insGetMetadata      = 0xf7
+	insMoveDeleteKey    = 0xf6
 )
 
 // Card is an exclusive open connection to a Card smart card. While open,
@@ -154,8 +156,8 @@ func (c *Card) Serial() (uint32, error) {
 
 		defer c.Select(iso.AidPIV) //nolint:errcheck
 
-		yk := yubikey.NewCard(c)
-		return yk.SerialNumber()
+		yc := yk.NewCard(c)
+		return yc.SerialNumber()
 	}
 
 	resp, err := send(c.tx, insGetSerial, 0, 0, nil)

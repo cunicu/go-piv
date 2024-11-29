@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
+// SPDX-FileCopyrightText: 2023-2024 Steffen Vogel <post@steffenvogel.de>
 // SPDX-License-Identifier: Apache-2.0
 
 package piv
 
 // Appendix A––PIV Data Mode
+//
 // https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=37
 //
 //nolint:unused
@@ -90,4 +91,15 @@ const (
 	tagPINPolicy          = 0xaa
 	tagTouchPolicy        = 0xab
 	tagErrorDetectionCode = 0xfe
+
+	// Yubikey extensions
+
+	tagMetadataAlgo          = 0x01
+	tagMetadataPolicy        = 0x02
+	tagMetadataOrigin        = 0x03
+	tagMetadataPublicKey     = 0x04
+	tagMetadataIsDefault     = 0x05
+	tagMetadataRetries       = 0x06
+	tagMetadataBioConfigured = 0x07
+	tagMetadataTemporaryPin  = 0x08
 )

@@ -19,8 +19,10 @@ import (
 var yubicoPIVCAPEMAfter2018 string
 
 // YubiKeys manufactured sometime in 2018 and prior to mid-2017
-// were certified using the U2F root CA with serial number 457200631
-// See https://github.com/Yubico/developers.yubico.com/pull/392/commits/a58f1003f003e04fc9baf09cad9f64f0c284fd47
+// were certified using the U2F root CA with serial number 457200631.
+//
+// https://github.com/Yubico/developers.yubico.com/pull/392/commits/a58f1003f003e04fc9baf09cad9f64f0c284fd47
+//
 // Cert available at https://developers.yubico.com/U2F/yubico-u2f-ca-certs.txt
 //
 //go:embed certs/yubico_u2f.crt
@@ -49,7 +51,7 @@ func yubicoCAs() (*x509.CertPool, error) {
 	// want to use the device attestation cert as intermediate cert in
 	// the chain. To make this work, set pathlen of the U2F root to 1.
 	//
-	// See https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.9
+	// https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.9
 	certU2F.MaxPathLen = 1
 	certPool.AddCert(certU2F)
 

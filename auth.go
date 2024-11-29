@@ -1,10 +1,12 @@
-// SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
+// SPDX-FileCopyrightText: 2023-2024 Steffen Vogel <post@steffenvogel.de>
 // SPDX-License-Identifier: Apache-2.0
 
 package piv
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/des" //nolint:gosec
 	"errors"
 	"fmt"
@@ -21,12 +23,17 @@ var errFailedToGenerateKey = errors.New("failed to generate random key")
 // certificates to slots.
 //
 // Use DefaultManagementKey if the management key hasn't been set.
+//
+// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=92
+// https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=918402#page=114
 func (c *Card) authenticate(key ManagementKey) error {
-	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=92
-	// https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=918402#page=114
+	meta, err := c.Metadata(SlotCardManagement)
+	if err != nil {
+		return fmt.Errorf("failed to get management key metadata: %w", err)
+	}
 
 	// Request a witness
-	resp, err := sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(Alg3DES), keyCardManagement,
+	resp, err := sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(meta.Algorithm), keyCardManagement,
 		tlv.New(0x7c,
 			tlv.New(0x80),
 		),
@@ -35,30 +42,41 @@ func (c *Card) authenticate(key ManagementKey) error {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
 
+	var block cipher.Block
+
+	switch meta.Algorithm {
+	case Alg3DES:
+		block, err = des.NewTripleDESCipher(key[:]) //nolint:gosec
+
+	case AlgAES128, AlgAES192, AlgAES256:
+		block, err = aes.NewCipher(key[:])
+
+	default:
+		return errUnsupportedKeyType
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create block cipher: %w", err)
+	}
+
 	cardChallenge, _, ok := resp.GetChild(0x7c, 0x80)
 	if !ok {
 		return errUnmarshal
-	} else if len(cardChallenge) != 8 {
-		return errUnexpectedLength
+	} else if len(cardChallenge) != block.BlockSize() {
+		return fmt.Errorf("%w: %d", errUnexpectedLength, len(cardChallenge))
 	}
 
-	block, err := des.NewTripleDESCipher(key[:]) //nolint:gosec
-	if err != nil {
-		return fmt.Errorf("failed to create triple des block cipher: %w", err)
-	}
-
-	cardResponse := make([]byte, 8)
+	cardResponse := make([]byte, block.BlockSize())
 	block.Decrypt(cardResponse, cardChallenge)
 
-	challenge := make([]byte, 8)
+	challenge := make([]byte, block.BlockSize())
 	if _, err := io.ReadFull(c.Rand, challenge); err != nil {
 		return fmt.Errorf("failed to read random data: %w", err)
 	}
 
-	response := make([]byte, 8)
+	response := make([]byte, block.BlockSize())
 	block.Encrypt(response, challenge)
 
-	if resp, err = sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(Alg3DES), keyCardManagement,
+	if resp, err = sendTLV(c.tx, iso.InsGeneralAuthenticate, byte(meta.Algorithm), keyCardManagement,
 		tlv.New(0x7c,
 			tlv.New(0x80, cardResponse),
 			tlv.New(0x81, challenge),
@@ -69,7 +87,7 @@ func (c *Card) authenticate(key ManagementKey) error {
 
 	if cardResponse, _, ok = resp.GetChild(0x7c, 0x82); !ok {
 		return errUnmarshal
-	} else if len(cardResponse) != 8 {
+	} else if len(cardResponse) != block.BlockSize() {
 		return errUnexpectedLength
 	} else if !bytes.Equal(cardResponse, response) {
 		return errChallengeFailed
@@ -79,6 +97,7 @@ func (c *Card) authenticate(key ManagementKey) error {
 }
 
 // authenticateWithPIN uses a PIN protected management key to authenticate
+//
 // https://docs.yubico.com/yesdk/users-manual/application-piv/pin-only.html
 // https://docs.yubico.com/yesdk/users-manual/application-piv/piv-objects.html#pinprotecteddata
 //
@@ -108,19 +127,18 @@ func (c *Card) authenticateWithPIN(pin string) error {
 //	if err := c.SetManagementKey(piv.DefaultManagementKey, newKey); err != nil {
 //		// ...
 //	}
-func (c *Card) SetManagementKey(oldKey, newKey ManagementKey) error {
+func (c *Card) SetManagementKey(oldKey, newKey ManagementKey, requireTouch bool, alg Algorithm) error {
 	if err := c.authenticate(oldKey); err != nil {
 		return fmt.Errorf("failed to authenticate with old key: %w", err)
 	}
 
 	p2 := byte(0xff)
-	touch := false // TODO
-	if touch {
+	if requireTouch {
 		p2 = 0xfe
 	}
 
 	if _, err := send(c.tx, insSetManagementKey, 0xff, p2, append([]byte{
-		byte(Alg3DES), keyCardManagement, 24,
+		byte(alg), keyCardManagement, 24,
 	}, newKey[:]...)); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
@@ -130,7 +148,7 @@ func (c *Card) SetManagementKey(oldKey, newKey ManagementKey) error {
 
 // https://docs.yubico.com/yesdk/users-manual/application-piv/pin-only.html
 // https://docs.yubico.com/yesdk/users-manual/application-piv/piv-objects.html#pinprotecteddata
-func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string) error {
+func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string, requireTouch bool, alg Algorithm) error {
 	var newKey ManagementKey
 
 	if n, err := c.Rand.Read(newKey[:]); err != nil {
@@ -152,7 +170,7 @@ func (c *Card) SetManagementKeyPinProtected(oldKey ManagementKey, pin string) er
 		return err
 	}
 
-	return c.SetManagementKey(oldKey, newKey)
+	return c.SetManagementKey(oldKey, newKey, requireTouch, alg)
 }
 
 // SetPIN updates the PIN to a new value. For compatibility, PINs should be 1-8
@@ -251,6 +269,10 @@ func encodePIN(pin string) ([]byte, error) {
 	}
 
 	// Apply padding
+	//
+	// 2.4 Security Architecture
+	// 2.4.3 Authentication of an Individual
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=88
 	for i := len(data); i < 8; i++ {
 		data = append(data, 0xff)
 	}
@@ -278,7 +300,11 @@ func login(tx *iso.Transaction, pin string) error {
 		return err
 	}
 
+	// 3.2 PIV Card Application Card Commands for Authentication
+	// 3.2.1 VERIFY Card Command
+	//
 	// https://csrc.nist.gov/CSRC/media/Publications/sp/800-73/4/archive/2015-05-29/documents/sp800_73-4_pt2_draft.pdf#page=20
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=86
 	if _, err = send(tx, iso.InsVerify, 0, 0x80, data); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
@@ -295,7 +321,7 @@ func loginNeeded(tx *iso.Transaction) bool {
 func (c *Card) Retries() (int, error) {
 	_, err := send(c.tx, iso.InsVerify, 0, 0x80, nil)
 	if err == nil {
-		return 0, fmt.Errorf("%w from empty pin", errExpectedError)
+		return 0, fmt.Errorf("%w from empty PIN", errExpectedError)
 	}
 
 	var aErr AuthError
@@ -304,4 +330,24 @@ func (c *Card) Retries() (int, error) {
 	}
 
 	return 0, fmt.Errorf("invalid response: %w", err)
+}
+
+// SetRetries sets the number of attempts for PIN and PUK.
+//
+// Both PIN and PUK will be reset to default values when this is executed.
+// Requires authentication with management key and PIN verification.
+func (c *Card) SetRetries(key ManagementKey, pin string, pinAttempts, pukAttempts int) error {
+	if err := login(c.tx, pin); err != nil {
+		return fmt.Errorf("PIN verification failed: %w", err)
+	}
+
+	if err := c.authenticate(key); err != nil {
+		return fmt.Errorf("failed to authenticate with management key: %w", err)
+	}
+
+	if _, err := send(c.tx, insSetPINRetries, byte(pinAttempts), byte(pukAttempts), nil); err != nil {
+		return fmt.Errorf("failed to execute command: %w", err)
+	}
+
+	return nil
 }
