@@ -115,9 +115,14 @@ func (c *Card) SetPinProtectedData(key ManagementKey, ppd *PinProtectedData) err
 		return fmt.Errorf("failed to authenticate with key: %w", err)
 	}
 
+	ppdData, err := tlv.EncodeBER(ppd.TagValues...)
+	if err != nil {
+		return err
+	}
+
 	if _, err := sendTLV(c.tx, insPutData, 0x3f, 0xff,
 		doPrinted.TagValue(),
-		tlv.New(0x53, ppd.TagValues),
+		tlv.New(0x53, ppdData),
 	); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
