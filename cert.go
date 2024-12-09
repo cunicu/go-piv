@@ -52,14 +52,19 @@ func (c *Card) SetCertificate(key ManagementKey, slot Slot, cert *x509.Certifica
 		return fmt.Errorf("failed to authenticate with management key: %w", err)
 	}
 
+	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=40
+	certData, err := tlv.EncodeBER(
+		tlv.New(tagCertificate, cert.Raw),
+		tlv.New(tagCertInfo, 0x00), // "for a certificate encoded in uncompressed form CertInfo shall be 0x00"
+		tlv.New(tagErrorDetectionCode),
+	)
+	if err != nil {
+		return err
+	}
+
 	if _, err := sendTLV(c.tx, insPutData, 0x3f, 0xff,
 		slot.Object.TagValue(),
-		tlv.New(0x53,
-			// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-73-4.pdf#page=40
-			tlv.New(tagCertificate, cert.Raw),
-			tlv.New(tagCertInfo, 0x00), // "for a certificate encoded in uncompressed form CertInfo shall be 0x00"
-			tlv.New(tagErrorDetectionCode),
-		),
+		tlv.New(0x53, certData),
 	); err != nil {
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
