@@ -16,7 +16,7 @@ func TestPINPolicy(t *testing.T) {
 	withCard(t, true, false, SupportsMetadata, func(t *testing.T, c *Card) {
 		// for imported keys, using the attestation certificate to derive the PIN
 		// policy fails. So we check that pinPolicy succeeds with imported keys.
-		priv := testKey(t, AlgTypeECCP, 256)
+		priv := testKey(t, AlgECCP256)
 
 		err := c.SetPrivateKeyInsecure(DefaultManagementKey, SlotAuthentication, priv, Key{
 			Algorithm:   AlgECCP256,

@@ -14,55 +14,79 @@ func TestMetadata(t *testing.T) {
 	tests := []struct {
 		name      string
 		slot      Slot
-		policy    Key
+		key       Key
 		importKey bool
 	}{
 		{
-			"EC/P256/Generated",
+			"EC-P256/Generated",
 			SlotAuthentication,
 			Key{AlgECCP256, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"EC/P384/Generated",
+			"EC-P384/Generated",
 			SlotAuthentication,
 			Key{AlgECCP384, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"RSA/1024/Generated",
+			"RSA-1024/Generated",
 			SlotAuthentication,
 			Key{AlgRSA1024, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"RSA/2048/Generated",
+			"RSA-2048/Generated",
 			SlotAuthentication,
 			Key{AlgRSA2048, PINPolicyNever, TouchPolicyNever},
 			false,
 		},
 		{
-			"EC/P256/Imported",
+			"RSA-3072/Generated",
+			SlotAuthentication,
+			Key{AlgRSA3072, PINPolicyNever, TouchPolicyNever},
+			false,
+		},
+		{
+			"RSA-4096/Generated",
+			SlotAuthentication,
+			Key{AlgRSA4096, PINPolicyNever, TouchPolicyNever},
+			false,
+		},
+		{
+			"EC-P256/Imported",
 			SlotAuthentication,
 			Key{AlgECCP256, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
-			"EC/P384/Imported",
+			"EC-P384/Imported",
 			SlotAuthentication,
 			Key{AlgECCP384, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
-			"RSA/1024/Imported",
+			"RSA-1024/Imported",
 			SlotAuthentication,
 			Key{AlgRSA1024, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
-			"RSA/2048/Imported",
+			"RSA-2048/Imported",
 			SlotAuthentication,
 			Key{AlgRSA2048, PINPolicyNever, TouchPolicyNever},
+			true,
+		},
+		{
+			"RSA-3072/Imported",
+			SlotAuthentication,
+			Key{AlgRSA3072, PINPolicyNever, TouchPolicyNever},
+			true,
+		},
+		{
+			"RSA-4096/Imported",
+			SlotAuthentication,
+			Key{AlgRSA4096, PINPolicyNever, TouchPolicyNever},
 			true,
 		},
 		{
@@ -113,21 +137,22 @@ func TestMetadata(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			withCard(t, true, false, SupportsMetadata, func(t *testing.T, c *Card) {
 				want := &Metadata{
-					Algorithm:   test.policy.Algorithm,
-					PINPolicy:   test.policy.PINPolicy,
-					TouchPolicy: test.policy.TouchPolicy,
+					Algorithm:   test.key.Algorithm,
+					PINPolicy:   test.key.PINPolicy,
+					TouchPolicy: test.key.TouchPolicy,
+					IsDefault:   false,
 				}
 
 				if test.importKey {
-					key := testKey(t, test.policy.Algorithm.algType(), test.policy.Algorithm.bits())
+					key := testKey(t, test.key.Algorithm)
 
-					err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, key, test.policy)
+					err := c.SetPrivateKeyInsecure(DefaultManagementKey, test.slot, key, test.key)
 					require.NoError(t, err, "importing key")
 
 					want.Origin = OriginImported
 					want.PublicKey = key.Public()
 				} else {
-					pub, err := c.GenerateKey(DefaultManagementKey, test.slot, test.policy)
+					pub, err := c.GenerateKey(DefaultManagementKey, test.slot, test.key)
 					require.NoError(t, err, "Failed to generate key")
 
 					want.Origin = OriginGenerated
@@ -140,4 +165,46 @@ func TestMetadata(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestMetadataPINPUK(t *testing.T) {
+	for typ, slot := range map[string]Slot{
+		"PIN": SlotPIN,
+		"PUK": SlotPUK,
+	} {
+		t.Run(typ, func(t *testing.T) {
+			withCard(t, true, false, SupportsMetadata, func(t *testing.T, c *Card) {
+				want := &Metadata{
+					Algorithm:        AlgPIN,
+					RetriesTotal:     3,
+					RetriesRemaining: 3,
+					IsDefault:        true,
+				}
+
+				// Get default metadata
+				got, err := c.Metadata(slot)
+				require.NoError(t, err)
+				require.Equal(t, want, got)
+			})
+		})
+	}
+}
+
+func TestMetadataCardManagement(t *testing.T) {
+	withCard(t, true, false, SupportsMetadata, func(t *testing.T, c *Card) {
+		want := &Metadata{
+			TouchPolicy: TouchPolicyNever,
+			IsDefault:   true,
+		}
+
+		if v571.Less(c.Version()) {
+			want.Algorithm = Alg3DES
+		} else {
+			want.Algorithm = AlgAES192
+		}
+
+		got, err := c.Metadata(SlotCardManagement)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	})
 }

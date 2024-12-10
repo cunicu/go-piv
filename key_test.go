@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"cunicu.li/go-iso7816/filter"
+	"cunicu.li/go-iso7816"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -85,15 +85,16 @@ func TestPINPrompt(t *testing.T) {
 
 func TestDecryptRSA(t *testing.T) {
 	tests := []struct {
-		name string
 		alg  Algorithm
 		long bool
 	}{
-		{"RSA/1024", AlgRSA1024, false},
-		{"RSA/2048", AlgRSA2048, true},
+		{AlgRSA1024, false},
+		{AlgRSA2048, true},
+		{AlgRSA3072, true},
+		{AlgRSA4096, true},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.alg.String(), func(t *testing.T) {
 			withCard(t, false, test.long, nil, func(t *testing.T, c *Card) {
 				slot := SlotAuthentication
 				key := Key{
@@ -131,7 +132,7 @@ func TestStoreCertificate(t *testing.T) {
 	withCard(t, false, false, nil, func(t *testing.T, c *Card) {
 		slot := SlotAuthentication
 
-		caPriv := testKey(t, AlgTypeECCP, 256)
+		caPriv := testKey(t, AlgECCP256)
 
 		// Generate a self-signed certificate
 		caTmpl := &x509.Certificate{
@@ -197,37 +198,34 @@ func TestStoreCertificate(t *testing.T) {
 
 func TestGenerateKey(t *testing.T) {
 	tests := []struct {
-		name string
 		alg  Algorithm
-		bits int
 		long bool
 	}{
 		{
-			name: "EC/P256",
-			alg:  AlgECCP256,
+			alg: AlgECCP256,
 		},
 		{
-			name: "EC/P384",
-			alg:  AlgECCP384,
+			alg: AlgECCP384,
 		},
 		{
-			name: "RSA/1024",
-			alg:  AlgRSA1024,
+			alg: AlgRSA1024,
 		},
 		{
-			name: "RSA/2048",
 			alg:  AlgRSA2048,
+			long: true,
+		},
+		{
+			alg:  AlgRSA3072,
+			long: true,
+		},
+		{
+			alg:  AlgRSA4096,
 			long: true,
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var flt filter.Filter
-			if test.alg == AlgECCP384 {
-				flt = SupportsAlgorithmEC384
-			}
-
-			withCard(t, false, test.long, flt, func(t *testing.T, c *Card) {
+		t.Run(test.alg.String(), func(t *testing.T) {
+			withCard(t, false, test.long, SupportsAlgorithm(test.alg), func(t *testing.T, c *Card) {
 				key := Key{
 					Algorithm:   test.alg,
 					TouchPolicy: TouchPolicyNever,
@@ -392,81 +390,72 @@ func TestVerify(t *testing.T) {
 	}
 }
 
-// privateKey is an interface with the optional (but always supported) methods
-// of crypto.PrivateKey.
-type privateKey interface {
-	Equal(crypto.PrivateKey) bool
-	Public() crypto.PublicKey
+func TestMoveKey(t *testing.T) {
+	withCard(t, true, false, SupportsKeyMoveDelete, func(t *testing.T, c *Card) {
+		// Moving non-existing key must fail
+		err := c.MoveKey(DefaultManagementKey, SlotAuthentication, SlotCardAuthentication)
+		require.ErrorIs(t, err, iso7816.ErrReferenceNotFound, "Expected move of non-existing key to fail")
+
+		// Generate key
+		_, err = c.GenerateKey(DefaultManagementKey, SlotAuthentication, Key{
+			Algorithm:   AlgRSA1024,
+			PINPolicy:   PINPolicyNever,
+			TouchPolicy: TouchPolicyNever,
+		})
+		require.NoErrorf(t, err, "Generation of new key failed: %w", err)
+
+		// Check that new key exists
+		m1, err := c.Metadata(SlotAuthentication)
+		require.NoErrorf(t, err, "Failed to retrieve metadata of new key: %w", err)
+		require.Equal(t, m1.Algorithm, AlgRSA1024, "Mismatching algorithm for new key")
+
+		pk1, ok := m1.PublicKey.(*rsa.PublicKey)
+		require.True(t, ok, "Key is not an RSA key")
+
+		// Move key
+		err = c.MoveKey(DefaultManagementKey, SlotAuthentication, SlotCardAuthentication)
+		require.NoErrorf(t, err, "Failed to move key: %w", err)
+
+		// Check key has been removed from source slot
+		_, err = c.Metadata(SlotAuthentication)
+		require.ErrorIs(t, err, iso7816.ErrReferenceNotFound, "Key still exists")
+
+		// Check key is now in the new slot
+		m2, err := c.Metadata(SlotCardAuthentication)
+		require.NoErrorf(t, err, "Failed to retrieve metadata of moved key: %w", err)
+
+		pk2, ok := m2.PublicKey.(*rsa.PublicKey)
+		require.True(t, ok, "Key is not an RSA key")
+
+		require.True(t, pk1.Equal(pk2), "Public keys of moved slot are not equal")
+	})
 }
 
-var (
-	//go:embed testdata/EC_224.key
-	testKeyEC224 []byte
-	//go:embed testdata/EC_256.key
-	testKeyEC256 []byte
-	//go:embed testdata/EC_384.key
-	testKeyEC384 []byte
-	//go:embed testdata/EC_521.key
-	testKeyEC521 []byte
+func TestDeleteKey(t *testing.T) {
+	withCard(t, true, false, SupportsKeyMoveDelete, func(t *testing.T, c *Card) {
+		// Delete non-existing key must fail
+		err := c.DeleteKey(DefaultManagementKey, SlotAuthentication)
+		require.ErrorIs(t, err, iso7816.ErrReferenceNotFound, "Deletion of non-existing key succeeded")
 
-	//go:embed testdata/RSA_512.key
-	testKeyRSA512 []byte
-	//go:embed testdata/RSA_1024.key
-	testKeyRSA1024 []byte
-	//go:embed testdata/RSA_2048.key
-	testKeyRSA2048 []byte
-	//go:embed testdata/RSA_4096.key
-	testKeyRSA4096 []byte
-)
+		// Generate key
+		_, err = c.GenerateKey(DefaultManagementKey, SlotAuthentication, Key{
+			Algorithm:   AlgRSA1024,
+			PINPolicy:   PINPolicyNever,
+			TouchPolicy: TouchPolicyNever,
+		})
+		require.NoErrorf(t, err, "Failed to generate key: %w", err)
 
-// testKey returns a deterministic key for testing
-// We require deterministic keys for reproducible tests
-// in order for the test transcript to match
-func testKey(t *testing.T, typ algorithmType, bits int) (key privateKey) {
-	t.Helper()
+		// Check that new key exists
+		m, err := c.Metadata(SlotAuthentication)
+		require.NoErrorf(t, err, "Failed to retrieve metadata of new key: %w", err)
+		require.Equal(t, m.Algorithm, AlgRSA1024, "Key is not an RSA key")
 
-	var testKey []byte
-	var err error
-	switch typ {
-	case AlgTypeECCP:
-		switch bits {
-		case 224:
-			testKey = testKeyEC224
-		case 256:
-			testKey = testKeyEC256
-		case 384:
-			testKey = testKeyEC384
-		case 521:
-			testKey = testKeyEC521
-		}
+		// Delete key
+		err = c.DeleteKey(DefaultManagementKey, SlotAuthentication)
+		require.NoErrorf(t, err, "Failed to delete key: %w", err)
 
-		b, _ := pem.Decode(testKey)
-		require.NotNil(t, b)
-
-		key, err = x509.ParseECPrivateKey(b.Bytes)
-		require.NoError(t, err)
-
-	case AlgTypeRSA:
-		switch bits {
-		case 512:
-			testKey = testKeyRSA512
-		case 1024:
-			testKey = testKeyRSA1024
-		case 2048:
-			testKey = testKeyRSA2048
-		case 4096:
-			testKey = testKeyRSA4096
-		}
-
-		b, _ := pem.Decode(testKey)
-		require.NotNil(t, b)
-
-		key, err = x509.ParsePKCS1PrivateKey(b.Bytes)
-		require.NoError(t, err)
-
-	default:
-		t.Fatalf("ephemeral key: unknown algorithm")
-	}
-
-	return key
+		// Check key has been removed
+		_, err = c.Metadata(SlotAuthentication)
+		require.ErrorIs(t, err, iso7816.ErrReferenceNotFound, "Key has not been removed")
+	})
 }

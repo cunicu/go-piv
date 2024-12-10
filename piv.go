@@ -14,7 +14,7 @@ import (
 	"math/big"
 
 	iso "cunicu.li/go-iso7816"
-	"cunicu.li/go-iso7816/devices/yubikey"
+	yk "cunicu.li/go-iso7816/devices/yubikey"
 	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
@@ -54,6 +54,8 @@ const (
 	tagAlg = 0x80
 
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-78-4.pdf#page=16
+	keyPIN                = 0x80
+	keyPUK                = 0x81
 	keyAuthentication     = 0x9a
 	keyCardManagement     = 0x9b
 	keySignature          = 0x9c
@@ -154,8 +156,8 @@ func (c *Card) Serial() (uint32, error) {
 
 		defer c.Select(iso.AidPIV) //nolint:errcheck
 
-		yk := yubikey.NewCard(c)
-		return yk.SerialNumber()
+		yc := yk.NewCard(c)
+		return yc.SerialNumber()
 	}
 
 	resp, err := send(c.tx, insGetSerial, 0, 0, nil)
