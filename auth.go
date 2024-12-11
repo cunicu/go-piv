@@ -313,3 +313,23 @@ func (c *Card) Retries() (int, error) {
 
 	return 0, fmt.Errorf("invalid response: %w", err)
 }
+
+// SetRetries sets the number of attempts for PIN and PUK.
+//
+// Both PIN and PUK will be reset to default values when this is executed.
+// Requires authentication with management key and PIN verification.
+func (c *Card) SetRetries(key ManagementKey, pin string, pinAttempts, pukAttempts int) error {
+	if err := login(c.tx, pin); err != nil {
+		return fmt.Errorf("PIN verification failed: %w", err)
+	}
+
+	if err := c.authenticate(key); err != nil {
+		return fmt.Errorf("failed to authenticate with management key: %w", err)
+	}
+
+	if _, err := send(c.tx, insSetPINRetries, byte(pinAttempts), byte(pukAttempts), nil); err != nil {
+		return fmt.Errorf("failed to execute command: %w", err)
+	}
+
+	return nil
+}

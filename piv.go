@@ -54,6 +54,8 @@ const (
 	tagAlg = 0x80
 
 	// https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-78-4.pdf#page=16
+	keyPIN                = 0x80
+	keyPUK                = 0x81
 	keyAuthentication     = 0x9a
 	keyCardManagement     = 0x9b
 	keySignature          = 0x9c

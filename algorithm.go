@@ -31,6 +31,9 @@ const (
 	// Non-standard; as implemented by SoloKeys. Chosen for low probability of eventual
 	// clashes, if and when PIV standard adds Ed25519 support
 	AlgEd25519 Algorithm = 0x22
+
+	// Non-standard extensions
+	AlgPIN Algorithm = 0xFF
 )
 
 func (a Algorithm) algType() algorithmType {
