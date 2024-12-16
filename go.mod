@@ -5,7 +5,7 @@ module cunicu.li/go-piv
 
 go 1.22.2
 
-require cunicu.li/go-iso7816 v0.8.1
+require cunicu.li/go-iso7816 v0.8.3
 
 require (
 	github.com/ebfe/scard v0.0.0-20241214075232-7af069cabc25 //test-only
