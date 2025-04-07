@@ -41,7 +41,7 @@ jobs:
     - name: Lint
       # TODO: golangci-lint is currently broken on Windows?
       if: matrix.os != 'windows-latest'
-      uses: golangci/golangci-lint-action@v6
+      uses: golangci/golangci-lint-action@v7
       with:
         version: v1.59.1
       continue-on-error: true
