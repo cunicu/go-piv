@@ -43,8 +43,7 @@ jobs:
       if: matrix.os != 'windows-latest'
       uses: golangci/golangci-lint-action@v8
       with:
-        version: v2.0.2
-      continue-on-error: true
+        version: v2.1.6
 
     - name: Set up gotestfmt
       run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
